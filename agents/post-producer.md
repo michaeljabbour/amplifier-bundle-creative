@@ -187,6 +187,7 @@ differ. Identical hashes = static = failure = regenerate with higher zoom.
 
 ---
 
+@creative:context/MODEL_SELECTION_GUIDE.md
 @creative:context/PRODUCTION_DECISIONS.md
 @creative:docs/PROJECT_STRUCTURE.md
 

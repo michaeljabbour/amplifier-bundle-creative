@@ -166,6 +166,7 @@ fallback via ffmpeg. Document the method used in the JSONL record.
 
 ---
 
+@creative:context/MODEL_SELECTION_GUIDE.md
 @creative:context/PRODUCTION_DECISIONS.md
 
 ---

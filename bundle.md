@@ -1,7 +1,7 @@
 ---
 bundle:
   name: creative
-  version: 0.1.0
+  version: 0.2.0
   description: Multi-modal creative production — image → video → audio → cut
 
 includes:

@@ -173,6 +173,7 @@ All outputs write inside the D039 project directory
 
 @creative:context/INTAKE_CHECKLIST.md
 @creative:context/OPERATOR_INTENT_MAP_TEMPLATE.md
+@creative:context/MODEL_SELECTION_GUIDE.md
 @creative:context/PRODUCTION_DECISIONS.md
 @creative:docs/OPERATOR_ASSET_INTAKE.md
 

@@ -173,6 +173,7 @@ Supported sizes: `1024x1024` (square), `1024x1536` (portrait), `1536x1024`
 
 ---
 
+@creative:context/MODEL_SELECTION_GUIDE.md
 @creative:context/PRODUCTION_DECISIONS.md
 @creative:context/SHOT_SPEC_SCHEMA.md
 

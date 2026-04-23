@@ -188,6 +188,7 @@ No TTS path activates. No concat-filter gymnastics. Clean music-bed master.
 
 ---
 
+@creative:context/MODEL_SELECTION_GUIDE.md
 @creative:context/PRODUCTION_DECISIONS.md
 
 ---
