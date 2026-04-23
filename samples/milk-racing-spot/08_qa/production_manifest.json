@@ -1,0 +1,39 @@
+{
+  "sample_name": "milk-racing-spot",
+  "type": "still-image-campaign",
+  "produced_at": "2026-04-23T07:40:00Z",
+  "brief": "Three-scene hero stills for a 30s motorsport sponsorship commercial where a milk board sponsors a racing team. Reframes milk as performance fuel. Campaign line: 'Fuel the fastest.'",
+  "deliverables": {
+    "shot_01_approach": {
+      "file": "03_shots/shot_01_approach.png",
+      "role": "setup — pit stop hand-off",
+      "aspect_ratio": "16:9",
+      "resolution": "2K",
+      "provider": "gemini",
+      "model": "gemini-3-pro-image-preview",
+      "generation_time_s": 28.3
+    },
+    "shot_02_hero_pour": {
+      "file": "03_shots/shot_02_hero_pour.png",
+      "role": "hero — product beauty macro",
+      "aspect_ratio": "16:9",
+      "resolution": "2K",
+      "provider": "gemini",
+      "model": "gemini-3-pro-image-preview",
+      "generation_time_s": 26.3
+    },
+    "shot_03_victory": {
+      "file": "03_shots/shot_03_victory.png",
+      "role": "payoff — podium milk spray",
+      "aspect_ratio": "16:9",
+      "resolution": "2K",
+      "provider": "gemini",
+      "model": "gemini-3-pro-image-preview",
+      "generation_time_s": 30.1
+    }
+  },
+  "provider_selection_rationale": "Gemini Nano Banana Pro chosen for all three shots: photorealistic commercial photography with no text-heavy elements. Per D019 privacy audit, Gemini is a cleared provider. Per the bundle's auto-selection rules, photoreal cinematic ad imagery routes to Gemini over OpenAI.",
+  "total_generation_time_s": 84.7,
+  "shot_regen_count": 0,
+  "notes": "Clean one-pass generation. No ref images conditioned (greenfield sample — no existing IP to match per D028). Prompts hold the campaign aesthetic throughline defined in 02_preproduction/STYLE_BIBLE.md. No text overlays applied; tagline 'FUEL THE FASTEST' documented in the creative brief for a later finishing pass."
+}
