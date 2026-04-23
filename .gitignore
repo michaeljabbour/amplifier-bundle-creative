@@ -1,0 +1,39 @@
+# macOS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Python (once code scaffolding begins)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Environment / secrets — never commit
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+secrets/
+
+# Coordination-file scratch space (runtime, not source)
+/runtime/
+/sessions/
+
+# Generated media (never check in raw outputs)
+*.mp4
+*.mov
+*.webm
+/outputs/
+/deliverables/

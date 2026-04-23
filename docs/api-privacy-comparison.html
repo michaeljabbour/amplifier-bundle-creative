@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image/Video API Privacy &amp; Security Comparison</title>
+<style>
+  :root {
+    --green: #16a34a;
+    --green-bg: #f0fdf4;
+    --yellow: #ca8a04;
+    --yellow-bg: #fefce8;
+    --red: #dc2626;
+    --red-bg: #fef2f2;
+    --gray: #6b7280;
+    --gray-bg: #f9fafb;
+    --border: #e5e7eb;
+    --text: #1f2937;
+    --text-light: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    background: #fff;
+    padding: 2rem;
+    line-height: 1.5;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: var(--text-light); margin-bottom: 2rem; font-size: 0.9rem; }
+  .verdict-bar {
+    display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap;
+  }
+  .verdict-chip {
+    padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600;
+  }
+  .chip-pass { background: var(--green-bg); color: var(--green); border: 1px solid #bbf7d0; }
+  .chip-conditional { background: var(--yellow-bg); color: var(--yellow); border: 1px solid #fef08a; }
+  .chip-fail { background: var(--red-bg); color: var(--red); border: 1px solid #fecaca; }
+
+  .provider-section {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .provider-header {
+    padding: 1rem 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .provider-header:hover { background: var(--gray-bg); }
+  .provider-name { font-weight: 700; font-size: 1.1rem; }
+  .provider-products { color: var(--text-light); font-size: 0.85rem; margin-top: 0.15rem; }
+  .verdict-badge {
+    padding: 0.25rem 0.65rem; border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;
+  }
+  .badge-pass { background: var(--green-bg); color: var(--green); }
+  .badge-conditional { background: var(--yellow-bg); color: var(--yellow); }
+  .badge-fail { background: var(--red-bg); color: var(--red); }
+
+  .provider-body { padding: 0 1.25rem 1.25rem; display: none; }
+  .provider-section.open .provider-body { display: block; }
+  .provider-section.open .provider-header { border-bottom: 1px solid var(--border); }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  @media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .detail-card {
+    background: var(--gray-bg);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+  }
+  .detail-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-light);
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+  .detail-value { font-size: 0.88rem; }
+  .detail-value.good { color: var(--green); }
+  .detail-value.warn { color: var(--yellow); }
+  .detail-value.bad { color: var(--red); }
+  .detail-value.neutral { color: var(--text); }
+
+  .full-width { grid-column: 1 / -1; }
+  .quote {
+    font-style: italic;
+    background: #fff;
+    border-left: 3px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+    font-size: 0.83rem;
+    color: var(--text-light);
+  }
+  .flag {
+    background: var(--red-bg);
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 0.6rem 0.85rem;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+  }
+  .flag-title { font-weight: 700; color: var(--red); margin-bottom: 0.2rem; }
+  .gate {
+    background: var(--yellow-bg);
+    border: 1px solid #fef08a;
+    border-radius: 6px;
+    padding: 0.6rem 0.85rem;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+  }
+  .gate-title { font-weight: 700; color: var(--yellow); margin-bottom: 0.2rem; }
+
+  /* Comparison table */
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2rem 0;
+    font-size: 0.82rem;
+  }
+  .comparison-table th {
+    background: var(--gray-bg);
+    padding: 0.6rem 0.5rem;
+    text-align: left;
+    font-weight: 700;
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+  }
+  .comparison-table td {
+    padding: 0.55rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .comparison-table tr:hover td { background: var(--gray-bg); }
+  .cell-pass { color: var(--green); font-weight: 600; }
+  .cell-warn { color: var(--yellow); font-weight: 600; }
+  .cell-fail { color: var(--red); font-weight: 600; }
+  .cell-unknown { color: var(--gray); font-style: italic; }
+
+  .section-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 2.5rem 0 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--text);
+  }
+  .source-link {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    margin-top: 0.25rem;
+  }
+  .source-link a { color: #2563eb; text-decoration: none; }
+  .source-link a:hover { text-decoration: underline; }
+  .toggle-arrow { transition: transform 0.2s; font-size: 0.9rem; }
+  .provider-section.open .toggle-arrow { transform: rotate(90deg); }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-light); }
+</style>
+</head>
+<body>
+
+<h1>Image &amp; Video API Provider Comparison</h1>
+<p class="subtitle">Privacy, Security, Retention, Ownership &amp; Training Policies — April 21, 2026</p>
+
+<div class="verdict-bar">
+  <span class="verdict-chip chip-pass">PASS: OpenAI, Anthropic</span>
+  <span class="verdict-chip chip-conditional">CONDITIONAL: Google Gemini, xAI, Recraft</span>
+  <span class="verdict-chip chip-fail">FAIL: Black Forest Labs, Ideogram</span>
+</div>
+
+<!-- ===== SUMMARY TABLE ===== -->
+<h2 class="section-title">Side-by-Side Summary</h2>
+
+<div style="overflow-x:auto;">
+<table class="comparison-table">
+<thead>
+<tr>
+  <th style="min-width:110px;">Criterion</th>
+  <th>OpenAI</th>
+  <th>Anthropic</th>
+  <th>Google Gemini</th>
+  <th>xAI (Grok)</th>
+  <th>Recraft</th>
+  <th>BFL (Flux)</th>
+  <th>Ideogram</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Trains on API data?</strong></td>
+  <td class="cell-pass">No (opt-in only)</td>
+  <td class="cell-pass">No (never for API)</td>
+  <td class="cell-warn">No if paid; Yes if free tier</td>
+  <td class="cell-warn">No (enterprise); de-identified data exception</td>
+  <td class="cell-pass">No (API never used)</td>
+  <td class="cell-fail">Yes — explicit right to train on inputs+outputs</td>
+  <td class="cell-warn">API ToS says no; but broad "use in any manner" clause contradicts</td>
+</tr>
+<tr>
+  <td><strong>Output ownership</strong></td>
+  <td class="cell-pass">User owns all outputs</td>
+  <td class="cell-pass">User owns all outputs</td>
+  <td class="cell-pass">User owns; Google may generate similar for others</td>
+  <td class="cell-warn">User owns; but broad irrevocable license to xAI</td>
+  <td class="cell-pass">User owns (paid plans); full commercial rights</td>
+  <td class="cell-fail">No explicit ownership grant; BFL claims perpetual license</td>
+  <td class="cell-pass">User owns; Ideogram assigns any acquired rights back</td>
+</tr>
+<tr>
+  <td><strong>License to provider</strong></td>
+  <td class="cell-pass">Minimal — service operation only</td>
+  <td class="cell-pass">Minimal — service operation only</td>
+  <td class="cell-warn">License "to the extent required under applicable law"</td>
+  <td class="cell-fail">Broad irrevocable license + de-identified data owned by xAI</td>
+  <td class="cell-pass">None stated for API</td>
+  <td class="cell-fail">Perpetual, irrevocable, worldwide, sublicensable license</td>
+  <td class="cell-warn">"Right to use in any manner all User data via API"</td>
+</tr>
+<tr>
+  <td><strong>Data retention</strong></td>
+  <td class="cell-pass">30 days (abuse monitoring); ZDR available</td>
+  <td class="cell-pass">7 days (API logs); auto-deleted</td>
+  <td class="cell-warn">Paid: transient/cached only; Free: unspecified</td>
+  <td class="cell-pass">30 days then auto-deleted</td>
+  <td class="cell-pass">Not stored for API; deleted on account deletion</td>
+  <td class="cell-fail">No retention period disclosed</td>
+  <td class="cell-fail">No retention period disclosed</td>
+</tr>
+<tr>
+  <td><strong>Deletion rights</strong></td>
+  <td class="cell-pass">API deletion + ZDR; purge within 30 days</td>
+  <td class="cell-pass">Auto-deleted at 7 days; DPA available</td>
+  <td class="cell-warn">Tuned model deletion; no general unilateral right stated</td>
+  <td class="cell-pass">Delete conversations; removed within 30 days</td>
+  <td class="cell-pass">Account deletion purges all data</td>
+  <td class="cell-fail">No deletion rights documented</td>
+  <td class="cell-fail">No deletion rights documented</td>
+</tr>
+<tr>
+  <td><strong>Opt-out mechanism</strong></td>
+  <td class="cell-pass">Default off; opt-in required</td>
+  <td class="cell-pass">Default off; feedback opt-in only</td>
+  <td class="cell-warn">Use paid tier (no toggle for free)</td>
+  <td class="cell-pass">Default off for API/Enterprise</td>
+  <td class="cell-pass">API exempt; web UI has toggle (paid only)</td>
+  <td class="cell-fail">None — no opt-out exists</td>
+  <td class="cell-fail">None documented</td>
+</tr>
+<tr>
+  <td><strong>Human review</strong></td>
+  <td class="cell-pass">Only for flagged abuse; excludable via ZDR</td>
+  <td class="cell-pass">Only opt-in feedback</td>
+  <td class="cell-warn">Paid: no; Free: yes, human reviewers read data</td>
+  <td class="cell-warn">Not explicitly addressed</td>
+  <td class="cell-warn">Not explicitly addressed</td>
+  <td class="cell-warn">Not explicitly addressed</td>
+  <td class="cell-warn">Not explicitly addressed</td>
+</tr>
+<tr>
+  <td><strong>Security certs</strong></td>
+  <td class="cell-pass">SOC 2 Type II, ISO 27001/27017/27018/27701</td>
+  <td class="cell-pass">SOC 2 Type II, ISO 27001, ISO 42001</td>
+  <td class="cell-pass">SOC 2, ISO 27001/27017/27018/27701, ISO 42001, FedRAMP, HITRUST</td>
+  <td class="cell-unknown">Not publicly documented</td>
+  <td class="cell-pass">SOC 2 Type II, PCI DSS Level 1</td>
+  <td class="cell-warn">ISO 27001 (footer reference only)</td>
+  <td class="cell-unknown">Not publicly documented</td>
+</tr>
+<tr>
+  <td><strong>Data residency</strong></td>
+  <td class="cell-pass">10 regions (US, EU, JP, AU, CA, IN, SG, KR, UK, UAE)</td>
+  <td class="cell-warn">Not detailed publicly</td>
+  <td class="cell-pass">Vertex AI: regional processing + storage controls</td>
+  <td class="cell-unknown">Not documented</td>
+  <td class="cell-warn">US East/West replication; no regional choice</td>
+  <td class="cell-unknown">Not documented</td>
+  <td class="cell-unknown">Not documented</td>
+</tr>
+<tr>
+  <td><strong>DPA available</strong></td>
+  <td class="cell-pass">Yes</td>
+  <td class="cell-pass">Yes (30-day optional retention)</td>
+  <td class="cell-pass">Yes (paid tier)</td>
+  <td class="cell-pass">Yes (Enterprise)</td>
+  <td class="cell-warn">Not confirmed</td>
+  <td class="cell-unknown">Not documented</td>
+  <td class="cell-unknown">Not documented</td>
+</tr>
+<tr>
+  <td><strong>IP indemnification</strong></td>
+  <td class="cell-warn">Enterprise agreements; not standard API</td>
+  <td class="cell-warn">Enterprise agreements</td>
+  <td class="cell-pass">Google Cloud standard terms</td>
+  <td class="cell-pass">Yes — covers patent/copyright/trademark claims</td>
+  <td class="cell-unknown">Not documented</td>
+  <td class="cell-unknown">Not documented</td>
+  <td class="cell-unknown">Not documented</td>
+</tr>
+<tr>
+  <td><strong>Relevant products</strong></td>
+  <td style="font-size:0.78rem;">gpt-image-2, gpt-image-1.5, Images 2.0, Sora 2</td>
+  <td style="font-size:0.78rem;">Claude Opus 4.7 vision (Critic)</td>
+  <td style="font-size:0.78rem;">Nano Banana 2/Pro, Veo 3.1 Lite/Fast/Standard</td>
+  <td style="font-size:0.78rem;">Grok Imagine Image, Grok Imagine Video</td>
+  <td style="font-size:0.78rem;">Recraft V4 (vectors, logos)</td>
+  <td style="font-size:0.78rem;">Flux 2 Pro, Flux Kontext</td>
+  <td style="font-size:0.78rem;">Ideogram V3 (typography)</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- ===== DETAILED PROVIDER SECTIONS ===== -->
+<h2 class="section-title">Provider Details</h2>
+
+<!-- OPENAI -->
+<div class="provider-section open">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">OpenAI <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">gpt-image-2 &middot; gpt-image-1.5 &middot; Images 2.0 &middot; Sora 2</div>
+    </div>
+    <span class="verdict-badge badge-pass">PASS</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value good">API data is NOT used for training. Opt-in only.</div>
+        <div class="quote">"Data sent to the OpenAI API is not used to train or improve OpenAI models unless you explicitly opt in."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value good">30 days for abuse monitoring. Zero Data Retention (ZDR) available.</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">ZDR eligible for gpt-image-1, gpt-image-1.5, gpt-image-1-mini. NOT eligible for DALL-E 2/3. ZDR requires prior OpenAI approval.</p>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value good">User owns all inputs and outputs.</div>
+        <div class="quote">"Your organization's data always remains confidential, secure, and entirely owned by you."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">License to Provider</div>
+        <div class="detail-value good">Minimal — service operation and abuse monitoring only.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value good">SOC 2 Type II (Jan–Jun 2025), ISO 27001:2022, ISO 27017, ISO 27018, ISO 27701:2019</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Residency</div>
+        <div class="detail-value good">10 regions: US, EU, AU, CA, JP, IN, SG, KR, UK, UAE. Processing in US and EU. 10% pricing uplift for non-US.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Deletion Rights</div>
+        <div class="detail-value good">API deletion available. Files purged 30 days after deletion request. ZDR eliminates retention entirely.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Human Review</div>
+        <div class="detail-value good">Only for flagged abuse content. Excludable via ZDR/Modified Abuse Monitoring.</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">Exception: CSAM scanning always active regardless of ZDR status.</p>
+      </div>
+    </div>
+    <div class="source-link">Sources: <a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank">Data Controls</a> &middot; <a href="https://openai.com/business-data/" target="_blank">Business Data</a> &middot; <a href="https://openai.com/security-and-privacy/" target="_blank">Security &amp; Privacy</a></div>
+  </div>
+</div>
+
+<!-- ANTHROPIC -->
+<div class="provider-section">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">Anthropic <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">Claude Opus 4.7 vision (Critic only)</div>
+    </div>
+    <span class="verdict-badge badge-pass">PASS</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value good">API data is NEVER used for training. No opt-in, no exceptions (unless user explicitly submits feedback).</div>
+        <div class="quote">"By default, Anthropic does not use inputs or outputs from commercial products (including the Anthropic API) to train its models."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value good">7 days for API logs, then auto-deleted. Reduced from 30 days in Sept 2025.</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">Feedback data (if opted in) retained up to 5 years. DPA available for 30-day audit retention.</p>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value good">User owns all inputs and outputs under Commercial Terms.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">License to Provider</div>
+        <div class="detail-value good">Minimal — service operation only. Explicit contractual prohibition on training.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value good">SOC 2 Type II, ISO 27001:2022, ISO 42001:2023 (AI management), HIPAA configurable</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Residency</div>
+        <div class="detail-value warn">Not detailed in public documentation.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Deletion Rights</div>
+        <div class="detail-value good">Auto-deleted at 7 days. Admin controls to disable feedback submission org-wide.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Human Review</div>
+        <div class="detail-value good">Only on explicitly submitted feedback. De-linked from user identifiers before any review.</div>
+      </div>
+    </div>
+    <div class="source-link">Sources: <a href="https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training" target="_blank">Training Policy</a> &middot; <a href="https://privacy.claude.com/en/articles/10023548-how-long-do-you-store-my-data" target="_blank">Data Retention</a> &middot; <a href="https://trust.anthropic.com/" target="_blank">Trust Center</a></div>
+  </div>
+</div>
+
+<!-- GOOGLE GEMINI -->
+<div class="provider-section">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">Google Gemini <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">Nano Banana 2/Pro &middot; Veo 3.1 Lite/Fast/Standard</div>
+    </div>
+    <span class="verdict-badge badge-conditional">CONDITIONAL</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value warn">PAID API: Not used for training. FREE API: Used for training + human review.</div>
+        <div class="quote">Unpaid: Google uses content to "improve and develop Google products and services and machine learning technologies." Paid: "Google doesn't use your prompts or responses to improve our products."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value warn">Paid: transient/cached for abuse detection only. Free: no retention limit stated.</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">Grounding w/ Search: 30 days. Grounding w/ Maps: up to 6 months.</p>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value good">Google won't claim ownership of generated content. May generate similar content for others.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">License to Provider</div>
+        <div class="detail-value warn">License granted "to the extent required under applicable law" — covers prompts, system instructions, cached content, files.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value good">SOC 2, ISO 27001/27017/27018/27701, ISO 42001, FedRAMP High, HITRUST, PCI DSS v4.0</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">Most comprehensive certification portfolio of any provider in this comparison.</p>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Residency</div>
+        <div class="detail-value good">Vertex AI: full regional processing and storage controls. Multi-region support.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Human Review</div>
+        <div class="detail-value warn">FREE: Human reviewers may read, annotate, and process API input/output. PAID: No review for improvement.</div>
+        <div class="quote">Data is "disconnected from your Google Account, API key, and Cloud project before reviewers see or annotate it."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">DPA &amp; Compliance</div>
+        <div class="detail-value good">DPA available for paid tier. Data Processing Addendum governs paid services. EEA/UK/Swiss users get paid-tier protections even on free.</div>
+      </div>
+    </div>
+    <div class="gate">
+      <div class="gate-title">Required Gate for Creative Bundle</div>
+      Bundle must enforce Cloud Billing (paid API tier) at configuration time. Free-quota API keys must be rejected. Without this, all inputs feed Google's training pipeline and are subject to human review.
+    </div>
+    <div class="source-link">Sources: <a href="https://ai.google.dev/gemini-api/terms" target="_blank">Gemini API Terms</a> &middot; <a href="https://docs.cloud.google.com/gemini/docs/discover/certifications" target="_blank">Certifications</a> &middot; <a href="https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/data-residency" target="_blank">Data Residency</a></div>
+  </div>
+</div>
+
+<!-- xAI -->
+<div class="provider-section">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">xAI (Grok) <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">Grok Imagine Image &middot; Grok Imagine Video</div>
+    </div>
+    <span class="verdict-badge badge-conditional">CONDITIONAL</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value warn">Enterprise API: No training on User Content. BUT: de-identified data may be used and is owned by xAI.</div>
+        <div class="quote">"xAI shall not use any User Content for any of its internal AI or other training purposes." However: "xAI may create and use de-identified data...to improve xAI's products and services...and such de-identified data will be owned by xAI."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value good">User Content auto-deleted within 30 days, unless legally required or flagged for safety/compliance.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value warn">Users own outputs. However, xAI is granted a broad irrevocable license for service provision, improvement, and analysis.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">License to Provider</div>
+        <div class="detail-value bad">Broad irrevocable license to store and use content. De-identified derivatives become xAI property permanently.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value neutral">Not publicly documented. No SOC 2 or ISO certifications found.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">IP Indemnification</div>
+        <div class="detail-value good">Yes — covers patent, copyright, trademark claims arising from use of Services per agreement terms.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">DPA</div>
+        <div class="detail-value good">Available at x.ai/legal/data-processing-addendum for Enterprise customers.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Termination</div>
+        <div class="detail-value good">Personal data deleted per agreement on termination, except where legally required (isolated and protected).</div>
+      </div>
+    </div>
+    <div class="gate">
+      <div class="gate-title">Required Gate for Creative Bundle</div>
+      <strong>4 unresolved items before adapter ships:</strong> (1) De-identified data clause — what exactly gets de-identified from image prompts/outputs? (2) Output ownership — the broad license effectively gives xAI perpetual use rights. (3) No public security certifications. (4) Consumer ToS vs Enterprise ToS — ensure Enterprise terms apply to API usage.
+    </div>
+    <div class="source-link">Sources: <a href="https://x.ai/legal/terms-of-service-enterprise" target="_blank">Enterprise ToS</a> &middot; <a href="https://x.ai/legal/privacy-policy" target="_blank">Privacy Policy</a> &middot; <a href="https://x.ai/legal/data-processing-addendum" target="_blank">DPA</a></div>
+  </div>
+</div>
+
+<!-- RECRAFT -->
+<div class="provider-section">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">Recraft <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">Recraft V4 (vectors, logos, illustrations)</div>
+    </div>
+    <span class="verdict-badge badge-conditional">CONDITIONAL</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value good">API data is NEVER used for training. Strongest documented API carve-out of any provider.</div>
+        <div class="quote">"API inputs and outputs are never used for model training. Data sent through the Recraft API is processed only to generate requested results and is not stored or used to improve models."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value good">API data is not stored. All personal data permanently removed on account deletion.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value good">Paid plans: full ownership + commercial rights. Free plans: no ownership of generated assets.</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">Ownership established at time of generation based on plan status.</p>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">License to Provider</div>
+        <div class="detail-value good">No license claimed for API data.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value good">SOC 2 Type II (certified Jan 2026), PCI DSS Level 1 (via Stripe)</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Infrastructure</div>
+        <div class="detail-value neutral">Azure-hosted. Postgres with 99.9999%+ durability. US East/West replication. Encryption in transit + at rest.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Opt-Out (Web UI)</div>
+        <div class="detail-value neutral">Pro: toggle in Profile Settings. Team: off by default. Free: no opt-out available.</div>
+        <p style="font-size:0.82rem; margin-top:0.3rem;">Irrelevant for API usage since API data is never used regardless.</p>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Incident Response</div>
+        <div class="detail-value good">DR plan: 4-phase recovery, 24-hour restoration target. Annual DR testing + penetration testing.</div>
+      </div>
+    </div>
+    <div class="gate">
+      <div class="gate-title">Required Gate for Creative Bundle</div>
+      Written confirmation from help@recraft.ai that: (1) the published "API data never used for training" policy is contractually binding, (2) retention schedule for any transient processing logs, (3) confirmation that paid API plan = full output ownership.
+    </div>
+    <div class="source-link">Sources: <a href="https://www.recraft.ai/docs/trust-and-security/data-use-and-model-training" target="_blank">Data Use &amp; Training</a> &middot; <a href="https://www.recraft.ai/blog/recraft-security-privacy-compliance-overview" target="_blank">Security Overview</a> &middot; <a href="https://www.recraft.ai/blog/recraft-is-soc-2-type-2-certified" target="_blank">SOC 2 Cert</a></div>
+  </div>
+</div>
+
+<!-- BLACK FOREST LABS -->
+<div class="provider-section">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">Black Forest Labs (Flux) <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">Flux 2 Pro &middot; Flux Kontext</div>
+    </div>
+    <span class="verdict-badge badge-fail">FAIL</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value bad">YES — BFL explicitly trains on all API inputs and outputs.</div>
+        <div class="quote">"We may use Inputs and Outputs to train and improve our artificial intelligence models, algorithms, and related technology, products, and services."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">License to Provider</div>
+        <div class="detail-value bad">Perpetual, irrevocable, worldwide, fully sublicensable license over all inputs and outputs.</div>
+        <div class="quote">"Fully paid, royalty-free, perpetual, irrevocable, worldwide, non-exclusive and fully sublicensable right and license to use, modify, and distribute."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value warn">Developer ToS says user owns outputs. BUT the API Service Terms grant BFL a perpetual sublicensable license, which effectively nullifies meaningful ownership.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value bad">No retention period disclosed. "Retained for as long as reasonably necessary" — undefined.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Opt-Out</div>
+        <div class="detail-value bad">No opt-out mechanism exists for training. No API carve-out.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Deletion Rights</div>
+        <div class="detail-value bad">Not documented. General GDPR right to object exists but no specific mechanism provided.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value warn">ISO 27001 referenced in website footer. No SOC 2 or other certifications documented.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Collected</div>
+        <div class="detail-value neutral">Prompts, image files, outputs, IP address, browser type, interaction logs, payment info.</div>
+      </div>
+    </div>
+    <div class="flag">
+      <div class="flag-title">Disqualifying for Creative Bundle</div>
+      Sending The Giving Mind character art or style prompts through Flux API means BFL gets a perpetual, sublicensable license to use those images and prompts to train future Flux models. There is no opt-out mechanism and no deletion right. This is incompatible with IP protection for original children's book artwork. <strong>Dropped from v0.1 scope.</strong>
+    </div>
+    <div class="source-link">Sources: <a href="https://bfl.ai/legal/flux-api-service-terms" target="_blank">Flux API Service Terms</a> &middot; <a href="https://bfl.ai/legal/developer-terms-of-service" target="_blank">Developer ToS</a> &middot; <a href="https://bfl.ai/legal/privacy-policy" target="_blank">Privacy Policy</a></div>
+  </div>
+</div>
+
+<!-- IDEOGRAM -->
+<div class="provider-section">
+  <div class="provider-header" onclick="this.parentElement.classList.toggle('open')">
+    <div>
+      <div class="provider-name">Ideogram <span class="toggle-arrow">&#9654;</span></div>
+      <div class="provider-products">Ideogram V3 (typography-focused generation)</div>
+    </div>
+    <span class="verdict-badge badge-fail">FAIL</span>
+  </div>
+  <div class="provider-body">
+    <div class="detail-grid">
+      <div class="detail-card">
+        <div class="detail-label">Training Policy</div>
+        <div class="detail-value warn">API ToS says no training on User Input/Output. BUT contradicted by broad usage clause.</div>
+        <div class="quote">API Terms: "The Company agrees that it shall not use any User Input or User Output to train the Ideogram AI Model." Privacy Policy: Ideogram may use information "including by training the models that power the Services."</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">The Contradiction</div>
+        <div class="detail-value bad">API Terms also state: "Ideogram has the right to use in any manner all User data received via the Ideogram API." This directly conflicts with the no-training clause.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Output Ownership</div>
+        <div class="detail-value good">User owns outputs. Ideogram assigns any acquired rights back to user. No commercial restrictions even on free tier.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Data Retention</div>
+        <div class="detail-value bad">Not disclosed. No information on how long prompts or generated images are stored.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Deletion Rights</div>
+        <div class="detail-value bad">Not documented. No mechanism provided.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Security Certifications</div>
+        <div class="detail-value bad">None publicly documented.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Opt-Out</div>
+        <div class="detail-value bad">None documented for API or consumer usage.</div>
+      </div>
+      <div class="detail-card">
+        <div class="detail-label">Feedback Clause</div>
+        <div class="detail-value warn">"All Feedback becomes the sole and exclusive property of the Company." Broadly defined — could encompass more than intended.</div>
+      </div>
+    </div>
+    <div class="flag">
+      <div class="flag-title">Disqualifying for Creative Bundle</div>
+      The internal contradiction between "shall not train" and "right to use in any manner" makes it impossible to rely on the no-training guarantee. Combined with no disclosed retention period, no deletion mechanism, and no security certifications, this provider cannot be trusted with original artwork. <strong>Dropped from v0.1 scope.</strong>
+    </div>
+    <div class="source-link">Sources: <a href="https://ideogram.ai/legal/api-tos" target="_blank">API Terms</a> &middot; <a href="https://ideogram.ai/privacy" target="_blank">Privacy Policy</a> &middot; <a href="https://ideogram.ai/legal/tos" target="_blank">Terms of Service</a></div>
+  </div>
+</div>
+
+<div class="footer">
+  <p>Compiled April 21, 2026 from publicly available terms, privacy policies, and documentation. Policies may have changed since this analysis. Always verify current terms before production use. This is not legal advice.</p>
+</div>
+
+<script>
+// All sections start collapsed except OpenAI (first one)
+document.querySelectorAll('.provider-section').forEach((s, i) => {
+  if (i > 0) s.classList.remove('open');
+});
+</script>
+</body>
+</html>
