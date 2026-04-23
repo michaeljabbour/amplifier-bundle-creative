@@ -6,7 +6,7 @@
   "deliverables": {
     "shot_01_approach": {
       "file": "03_shots/shot_01_approach.png",
-      "role": "setup — pit stop hand-off",
+      "role": "setup \u2014 pit stop hand-off",
       "aspect_ratio": "16:9",
       "resolution": "2K",
       "provider": "gemini",
@@ -15,7 +15,7 @@
     },
     "shot_02_hero_pour": {
       "file": "03_shots/shot_02_hero_pour.png",
-      "role": "hero — product beauty macro",
+      "role": "hero \u2014 product beauty macro",
       "aspect_ratio": "16:9",
       "resolution": "2K",
       "provider": "gemini",
@@ -24,7 +24,7 @@
     },
     "shot_03_victory": {
       "file": "03_shots/shot_03_victory.png",
-      "role": "payoff — podium milk spray",
+      "role": "payoff \u2014 podium milk spray",
       "aspect_ratio": "16:9",
       "resolution": "2K",
       "provider": "gemini",
@@ -35,5 +35,107 @@
   "provider_selection_rationale": "Gemini Nano Banana Pro chosen for all three shots: photorealistic commercial photography with no text-heavy elements. Per D019 privacy audit, Gemini is a cleared provider. Per the bundle's auto-selection rules, photoreal cinematic ad imagery routes to Gemini over OpenAI.",
   "total_generation_time_s": 84.7,
   "shot_regen_count": 0,
-  "notes": "Clean one-pass generation. No ref images conditioned (greenfield sample — no existing IP to match per D028). Prompts hold the campaign aesthetic throughline defined in 02_preproduction/STYLE_BIBLE.md. No text overlays applied; tagline 'FUEL THE FASTEST' documented in the creative brief for a later finishing pass."
+  "notes": "Clean one-pass generation. No ref images conditioned (greenfield sample \u2014 no existing IP to match per D028). Prompts hold the campaign aesthetic throughline defined in 02_preproduction/STYLE_BIBLE.md. No text overlays applied; tagline 'FUEL THE FASTEST' documented in the creative brief for a later finishing pass.",
+  "commercial_video": {
+    "file": "06_masters/v1_commercial.mp4",
+    "duration_s": 27.0,
+    "resolution": "1920x1080",
+    "fps": 24,
+    "codec": "h264",
+    "audio": null,
+    "audio_note": "silent \u2014 audio is v0.2 scope per D022",
+    "scenes": [
+      {
+        "id": "shot_01_approach",
+        "duration_s": 8,
+        "motion_method": "veo-fast",
+        "veo_tier": "fast"
+      },
+      {
+        "id": "shot_02_hero_pour",
+        "duration_s": 8,
+        "motion_method": "veo-standard",
+        "veo_tier": "standard"
+      },
+      {
+        "id": "shot_03_victory",
+        "duration_s": 8,
+        "motion_method": "veo-standard",
+        "veo_tier": "standard"
+      }
+    ],
+    "end_card": {
+      "duration_s": 3,
+      "text": "FUEL THE FASTEST",
+      "subtitle": "a sample commercial concept",
+      "font": "ChalkboardSE Regular"
+    }
+  },
+  "commercial_video_v2": {
+    "file": "06_masters/v2_commercial.mp4",
+    "fixes_from_v1": [
+      "Shot 1 regenerated via Veo 3.1 Standard with explicit hand-off completion in the motion prompt (v1 Fast-tier motion had the crew member reaching but never completing the pass)",
+      "Added narration audio track (D031 OpenAI tts-1-hd onyx voice at 0.95x, 3 lines, concat-filter VO track per D034 timed to visual beats). V1 shipped silent citing D022 audio-v0.2 \u2014 that was wrong, OpenAI TTS is v0.1 cleared per D031."
+    ],
+    "duration_s": 27.0,
+    "resolution": "1920x1080",
+    "fps": 24,
+    "codec": "h264",
+    "audio": {
+      "codec": "aac",
+      "bitrate": "192k",
+      "sample_rate": 44100,
+      "channels": 2,
+      "vo_provider": "openai",
+      "vo_model": "tts-1-hd",
+      "vo_voice": "onyx",
+      "vo_speed": 0.95,
+      "vo_schedule": [
+        {
+          "line": "When milliseconds matter...",
+          "start_s": 5.0,
+          "duration_s": 1.73
+        },
+        {
+          "line": "...every drop is performance.",
+          "start_s": 11.0,
+          "duration_s": 1.94
+        },
+        {
+          "line": "Fuel. The fastest.",
+          "start_s": 24.5,
+          "duration_s": 1.13
+        }
+      ],
+      "music": "none (v0.1 bundle has no cleared music generator)"
+    },
+    "scenes": [
+      {
+        "id": "shot_01_approach",
+        "duration_s": 8,
+        "motion_method": "veo-standard",
+        "veo_tier": "standard",
+        "regen_reason": "v1 hand-off did not complete"
+      },
+      {
+        "id": "shot_02_hero_pour",
+        "duration_s": 8,
+        "motion_method": "reused-from-v1",
+        "source": "extracted via ffmpeg -ss 8 -t 8 -c copy from v1_commercial.mp4"
+      },
+      {
+        "id": "shot_03_victory",
+        "duration_s": 8,
+        "motion_method": "reused-from-v1",
+        "source": "extracted via ffmpeg -ss 16 -t 8 -c copy from v1_commercial.mp4"
+      }
+    ],
+    "end_card": {
+      "duration_s": 3,
+      "text": "FUEL THE FASTEST",
+      "subtitle": "a sample commercial concept",
+      "font": "ChalkboardSE Regular",
+      "source": "reused from v1"
+    }
+  }
 }

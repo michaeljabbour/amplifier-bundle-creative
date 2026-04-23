@@ -35,5 +35,10 @@ secrets/
 *.mp4
 *.mov
 *.webm
+
+# EXCEPTION: sample deliverables under samples/ are meant to be tracked
+!samples/**/*.mp4
+!samples/**/*.mov
+!samples/**/*.webm
 /outputs/
 /deliverables/
