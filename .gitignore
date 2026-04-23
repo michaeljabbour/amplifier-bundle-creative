@@ -1,44 +1,27 @@
-# macOS / editor cruft
-.DS_Store
-Thumbs.db
-*.swp
-*~
-.idea/
-.vscode/
-
-# Python (once code scaffolding begins)
+# Python
 __pycache__/
-*.py[cod]
-.pytest_cache/
+*.pyc
+*.egg-info/
 .venv/
 venv/
-.mypy_cache/
+.pytest_cache/
 .ruff_cache/
-dist/
-build/
-*.egg-info/
+.mypy_cache/
 
-# Environment / secrets — never commit
-.env
-.env.local
-.env.*.local
-*.key
-*.pem
-credentials.json
-secrets/
+# OS
+.DS_Store
+Thumbs.db
 
-# Coordination-file scratch space (runtime, not source)
-/runtime/
-/sessions/
-
-# Generated media (never check in raw outputs)
+# Generated media — never check in raw outputs
 *.mp4
 *.mov
 *.webm
+*.mp3
+*.wav
 
 # EXCEPTION: sample deliverables under samples/ are meant to be tracked
 !samples/**/*.mp4
 !samples/**/*.mov
 !samples/**/*.webm
-/outputs/
-/deliverables/
+
+# Per-project run directories live under ~/Downloads/, not here (D025)

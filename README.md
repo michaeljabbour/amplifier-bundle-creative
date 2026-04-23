@@ -1,134 +1,194 @@
 # amplifier-bundle-creative
 
-**Status:** Design-v0.1 (see `spec/SPEC.md`), **validated through one real end-to-end production** (the pilot project picture-book animation, 4 iterations). 41 resolved decisions on file. Phase 2a implementation starts next.
+**Status:** v0.1.0 — bundle scaffolding complete. 7 agents, 5 behaviors, 4 recipes, 1 tool module (Veo 3.1 wrapper). Ready for smoke testing on a real brief.
 
-The bundle itself (agents, behaviors, MCPs, coordination-file Context module) still hasn't landed — but the spec is no longer theoretical. The first reference project revealed five distinct failure modes and five new corrective decisions, all captured in `spec/DECISIONS.md`. Every design assumption the bundle makes is now either confirmed by successful production use or revised based on what actually broke.
+This Amplifier bundle turns a creative brief or operator reference material into a finished multi-modal deliverable — image → video → audio → cut — with full provenance. It orchestrates OpenAI (gpt-image-2, tts-1-hd, Whisper, vision) + Google (Nano Banana Pro, Veo 3.1) + Anthropic (reasoning) + xAI (image, config-time warning) through a 7-agent pipeline, all routed through cleared providers per the D019 privacy audit.
 
----
-
-## What this is
-
-A planned Amplifier bundle that turns a creative brief into a reviewable deliverable with a full provenance trail, by orchestrating:
-
-- **Image generation** — OpenAI gpt-image-2, Google Nano Banana 2/Pro; Ideogram / Recraft / Flux permanently removed per the D019 privacy audit
-- **Video generation** — Google Veo 3.1 (Lite / Fast / Standard); xAI Grok Imagine Video cleared with config-time warning; Sora 2 stubbed only (deprecating 2026-09-24)
-- **Audio** — operator-supplied tracks direct-muxed (D040); OpenAI `tts-1-hd` for narration-synthesis when needed (D031); ElevenLabs Enterprise reserved for v0.2 AudioGeneration surface (D022)
-- **Creative critique** — vision-LLM-based via Amplifier's routing matrix (Claude Opus, GPT-4.1, Gemini 3 Pro vision)
-
-All providers passed the D019 privacy audit or were permanently removed. See `spec/SPEC.md` for the frozen v0.1 design and `spec/DECISIONS.md` (41 entries) for the rolling resolutions log.
-
----
-
-## The reference project — pilot project
-
-The first full production cycle took a 16-page children's picture book to a 5:15 animated trailer with 32 shots, narration-synced text overlays, music bed, opening question card, and title card. Four iterations (v1 → v4.1) with operator review between each. The run directory (in `~/Downloads/`, per D025) is organized as a film production per D039 — the layout is documented in `docs/PROJECT_STRUCTURE.md` as the canonical pattern for future Creative bundle projects.
-
-Production details, artifacts, and the operator intent map live in that run directory. What came back to the bundle is lessons (`docs/PRODUCTION_LESSONS.md`) and the formal decisions log — these are the deliverables from the reference project as far as the bundle repo is concerned.
-
-### What the reference project validated
-
-- **Reference-image-first generation** (D028) held up: every shot of the pilot-project trailer was conditioned on the operator's actual source illustrations via Nano Banana Pro. Character-identity drift stayed at zero across 32 shots.
-- **Setting-match reference selection** (D029) beat face-clarity-optimal ref selection. Shot 1's v2 candidate (landscape refs) read more correctly than v3 (face-clarity refs from non-matching settings).
-- **File-to-Downloads storage discipline** (D025): the operator navigated all four versions' artifacts naturally without any ceremony. The film-production directory structure (D039) made the 149-file run dir navigable.
-- **Ken-Burns quota fallback** (D032): when Veo 3.1 quota exhausted mid-run, shots with correct frames got subtle-zoom fallback motion and shipped. Operator accepted the trade — character fidelity preserved, motion degraded gracefully.
-- **Ruthless cleared-provider stack**: OpenAI + Google + Anthropic + xAI (four providers) covered every capability the project needed. No pressure to revisit the permanently-removed BFL/Ideogram/Recraft/ElevenLabs-aggregator.
-
-### What the reference project changed
-
-Five new decisions landed as a direct result of what broke:
-
-- **D040** — operator-provided audio supersedes synthesized narration. Whisper-transcribe before generating TTS. The bundle was stacking TTS on top of operator-provided narrated tracks.
-- **D041** — multi-modal operator reference intake is mandatory. Look at the operator's mockup video / deck / PPTX before generating anything. The operator had an entire 40s opening sequence the AI producer ignored for three cycles.
-- **D042** — text overlays must be timed to narration segments, not shot cuts. Use Whisper segment timestamps to drive overlay enable ranges.
-- **D043** — held-frame extensions must carry Ken-Burns motion. Static held-frames are read as scene-transition gaps.
-- **D044** — asset intake becomes a first-class checklist step. Not a sub-bullet, not an "if time permits" — the first thing pre-production does is look at what the operator already provided.
-
-Full narrative in `docs/PRODUCTION_LESSONS.md`. The new pre-production protocol is documented in `docs/OPERATOR_ASSET_INTAKE.md`.
-
----
-
-## Repo map
+## The pipeline
 
 ```
-amplifier-bundle-creative/
-├── README.md                          (this file)
-├── spec/
-│   ├── SPEC.md                        (frozen design-v0.1 — (frozen design baseline))
-│   └── DECISIONS.md                   (rolling log — 41 resolved entries)
-├── docs/
-│   ├── PROJECT_STRUCTURE.md           (D039 — film-production folder layout every project follows)
-│   ├── OPERATOR_ASSET_INTAKE.md       (D041/D044 — mandatory pre-production analysis protocol)
-│   ├── PRODUCTION_LESSONS.md          (rolling narrative — v2 and v4/v4.1 cycles so far)
-│   ├── api-privacy-comparison.md      (D019 — the privacy audit that cleared the provider stack)
-│   └── api-privacy-comparison.html    (same, rendered)
+operator brief + assets
+        │
+        ▼
+┌─────────────────┐
+│ intake-analyst  │  (D041/D044 — Whisper, vision, PDF extraction)
+└────────┬────────┘
+         │ OPERATOR_INTENT_MAP.md
+         ▼
+┌───────────────────┐
+│ creative-director │  (brief → shot list + style bible + character sheet)
+└───┬───────────┬───┘
+    │           │   (parallel — no dependency)
+    ▼           ▼
+┌──────────┐ ┌──────────────┐
+│ image-   │ │ audio-       │
+│ generator│ │ producer     │
+└────┬─────┘ └──────┬───────┘
+     │ frames/      │ tracks/
+     ▼              │
+┌──────────┐        │
+│ video-   │        │
+│ generator│        │
+└────┬─────┘        │
+     │ motion/      │
+     ▼              ▼
+┌─────────────────────┐
+│    post-producer    │  (stitch + overlays + masters)
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────┐
+│   qa-reviewer   │  (amplitude + vision check, D036 manifest)
+└─────────────────┘
+           │
+           ▼
+  operator approval gate
 ```
 
-No `modules/`, `agents/`, `behaviors/`, or `recipes/` directory yet. Phase 2a lands those.
+## What's in this bundle
 
----
+```
+bundle.md                              # Root composition (thin — 22 lines)
+context/                               # Shared schemas, templates, awareness pointers
+  ├── creative-instructions.md         # Root session prompt
+  ├── creative-awareness.md            # Thin capability map for sub-sessions
+  ├── PRODUCTION_DECISIONS.md          # D019–D044 summary (agents reference this)
+  ├── SHOT_SPEC_SCHEMA.md              # Shot format contract
+  ├── SHOT_LIST_TEMPLATE.md            # Starter template
+  ├── STYLE_BIBLE_TEMPLATE.md          # Aesthetic throughline template
+  ├── CHARACTER_SHEET_TEMPLATE.md      # Character ref-ranking template
+  ├── OPERATOR_INTENT_MAP_TEMPLATE.md  # Intake-analyst output synthesis
+  └── INTAKE_CHECKLIST.md              # D041/D044 protocol
 
-## Relationship to other repos
+agents/                                # 7 specialized agents (markdown + YAML frontmatter)
+  ├── intake-analyst.md                # (vision) D040/D041/D044/D037
+  ├── creative-director.md             # (creative) shot list, style bible, character sheet
+  ├── image-generator.md               # (fast) Nano Banana Pro + gpt-image-2
+  ├── video-generator.md               # (fast) Veo 3.1 + D032/D033/D043 discipline
+  ├── audio-producer.md                # (fast) TTS + direct-mux, D034 concat-filter
+  ├── post-producer.md                 # (coding) ffmpeg stitching + D042/D043
+  └── qa-reviewer.md                   # (critique) D036 amplitude + manifest
 
-| Repo | Role | Status |
+behaviors/                             # Reusable capability packages
+  ├── full-production.yaml             # All 7 agents (bundle default)
+  ├── pre-production.yaml              # intake + creative-director
+  ├── shot-production.yaml             # image + video generators
+  ├── audio-production.yaml            # audio-producer
+  └── post-production.yaml             # post-producer + qa-reviewer
+
+recipes/                               # Orchestration workflows
+  ├── project-intake.yaml              # (163 lines, 3 stages, 1 approval)
+  ├── commercial-from-brief.yaml       # (472 lines, 7 stages, 3 approvals)
+  ├── trailer-from-picture-book.yaml   # (508 lines, 7 stages, 4 approvals)
+  └── animate-existing-stills.yaml     # (447 lines, 6 stages, 2 approvals)
+
+modules/tool-video/                    # In-bundle Amplifier tool module
+  ├── amplifier_module_tool_video/
+  │   ├── __init__.py                  # mount() — registers generate_video + list_video_models
+  │   ├── provider.py                  # google-genai SDK wrapper
+  │   ├── schemas.py                   # Pydantic input schemas
+  │   └── validation.py                # D033 tier × duration matrix + typed exceptions
+  ├── tests/test_validation.py         # 54 unit tests (no API calls)
+  └── pyproject.toml                   # Extracts to separate repo when other bundles need it
+
+spec/                                  # Design artifacts
+  ├── SPEC.md                          # Frozen design baseline
+  └── DECISIONS.md                     # 41 resolved decisions (forensic log)
+
+docs/                                  # Reference material
+  ├── PRODUCTION_LESSONS.md            # Two reference cycles — what worked, what broke
+  ├── PROJECT_STRUCTURE.md             # D039 directory convention (every project follows)
+  ├── OPERATOR_ASSET_INTAKE.md         # D041/D044 full checklist
+  └── api-privacy-comparison.md        # D019 provider audit
+
+samples/                               # Reference output
+  └── milk-racing-spot/                # Hand-rolled 27s commercial (pre-bundle era, kept for comparison)
+```
+
+## Quick start
+
+```bash
+# Load the bundle (once its package is installed or checked out)
+amplifier bundle load creative
+
+# Run any of the 4 recipes
+amplifier run creative:recipes/commercial-from-brief \
+    project_name=acme-hero-spot \
+    brief_path=./brief.md \
+    target_duration_s=30 \
+    narration_voice=onyx
+
+# Recipe will pause at 3 approval gates (creative direction → frames → master)
+# Output master lands at ~/Downloads/acme-hero-spot-YYYYMMDD-HHMMSS/06_masters/v1_titled.mp4
+```
+
+## The 4 recipes — when to use which
+
+| Recipe | Inputs | When to use |
 |---|---|---|
-| [`imagen-mcp`](https://github.com/michaeljabbour/imagen-mcp) | Image-generation MCP server | Shipping (v0.3.0). Will be extended in Phase 2a with Nano Banana Pro ref-image downsize (D030) + bundle-toolkit helpers (from production lessons). |
-| [`amplifier-bundle-imagen`](https://github.com/michaeljabbour/amplifier-bundle-imagen) | Image-focused bundle (Visual Director specialists) | Shipping (v1.1.0). Will be composed as a sub-behavior of this bundle in Phase 2b. |
-| `video-mcp` (new) | Async video-generation MCP server | Phase 2a. Shot-spec validation against per-tier Veo duration constraints (D033) lands in v0.1.1. |
-| `amplifier-bundle-creative` (this repo) | Orchestration bundle composing imagen-mcp + video-mcp + AudioGeneration | Design validated via pilot project reference project; code scaffolding begins Phase 2a. |
+| `project-intake` | Operator assets in `source_dir/` | Wait-and-see pass: let the producer analyze everything and report back before committing to full production |
+| `commercial-from-brief` | Verbal brief | Greenfield campaign work — 15–45 s commercial from a creative ask |
+| `trailer-from-picture-book` | Book pages + optional narration | Existing-IP trailer/animation work (exercises D028/D029 ref-image-first) |
+| `animate-existing-stills` | Approved stills + optional VO/music | Image-campaign → motion extension (skip generation, just motion + audio + master) |
 
----
+All recipes pause at approval gates (creative direction, frames, master) so the operator can course-correct before each downstream stage. Per D013, operators win taste calls; agents win hard-rule calls (refs present, tier validity, amplitude at anchors, budget).
+
+## Decisions owned by each agent
+
+| Agent | Decisions they own at call time |
+|---|---|
+| intake-analyst | D037 (multi-sample font ID), D040 (narration routing), D041 (multi-modal intake), D044 (intake-first) |
+| creative-director | Shot decomposition, D028 ref-page selection, D029 setting-match heuristic, D033 tier×duration, D035 text overlay mapping, D038 music-driven duration |
+| image-generator | D028/D029 ref-first conditioning, D030 ref-downsize, provider selection per shot |
+| video-generator | D033 tier validation, D032 KB fallback on quota exhaustion |
+| audio-producer | D031 TTS voice selection, D034 concat-filter pattern, D038 music-driven duration, D040 direct-mux routing |
+| post-producer | D042 narration-synced overlays, D043 KB on held extensions, D035 verbatim text |
+| qa-reviewer | D036 amplitude verification + manifest authorship, D013 taste-vs-hard-rule boundary |
+
+Full decision log: `spec/DECISIONS.md` (41 resolved entries with forensic trigger/resolution each).
+
+## Storage convention
+
+Every project writes to `~/Downloads/{project-name}-{YYYYMMDD-HHMMSS}/` per D025, following the D039 film-production layout. See `docs/PROJECT_STRUCTURE.md` for the full template — `01_source/` through `99_archive/` with numeric prefixes that enforce the pre-production → shot-production → audio → post → delivery flow.
+
+## The reference sample
+
+`samples/milk-racing-spot/` contains a 27-second commercial (3 scenes: pit-stop hand-off → hero pour → podium spray) that was **hand-rolled before this bundle existed**. It's kept in the repo for comparison: `v2_commercial.mp4` is the human-scripted output; once the bundle is smoke-tested against the same brief, a `v3_via_bundle.mp4` will join it so readers can compare hand-rolled vs bundle-orchestrated output.
+
+## Dependencies
+
+| Dependency | Role | Status |
+|---|---|---|
+| [`amplifier-foundation`](https://github.com/microsoft/amplifier-foundation) | Base tools + session + hooks | Composed via `bundle.md` |
+| [`amplifier-bundle-recipes`](https://github.com/microsoft/amplifier-bundle-recipes) | Recipe orchestration | Composed via `bundle.md` |
+| [`amplifier-bundle-imagen`](https://github.com/michaeljabbour/amplifier-bundle-imagen) | Visual Director specialist agents | Composed via `behaviors/full-production.yaml` + `behaviors/shot-production.yaml` |
+| [`imagen-mcp`](https://github.com/michaeljabbour/imagen-mcp) | Image-generation MCP server | Wrapped by `amplifier-bundle-imagen` |
+| `modules/tool-video` (in-bundle) | Veo 3.1 wrapper as Amplifier tool module | In-bundle for now; extracts when other bundles need it |
 
 ## Roadmap
 
-### Phase 0 — Design checkpoint (done)
-- `spec/SPEC.md` frozen at `design-v0.1`
-- Privacy audit (D019) complete; four cleared providers + permanent removals
-- Reference project (pilot-project trailer) validated 41 decisions across v1→v4.1 cycles
+- **Phase 0** — Design baseline ✓
+- **Phase 1** — Reference productions + lessons capture ✓
+- **Phase 2a** — Bundle scaffolding ✓ *(this release)*
+  - `bundle.md`, context/, agents/, behaviors/, recipes/, modules/tool-video/
+  - 4 recipes: project-intake, commercial-from-brief, trailer-from-picture-book, animate-existing-stills
+- **Phase 2b** — Smoke testing + post-production toolkit helpers
+  - Reproduce milk-racing-spot via `amplifier run creative:recipes/commercial-from-brief`
+  - Extract `modules/tool-video` to its own repo once another bundle needs it
+  - Add `whisper_transcribe`, `build_operator_intent_map`, `extend_via_held_frame` as module-level helpers
+- **Phase 2c** — Second reference project through the bundle (catch v4.1-style gaps)
+- **Phase 3** — Public beta + docs polish
 
-### Phase 1 — Design refinements from reference project (done)
-- D028–D044 (17 new decisions) captured
-- `docs/PROJECT_STRUCTURE.md`, `docs/OPERATOR_ASSET_INTAKE.md`, `docs/PRODUCTION_LESSONS.md` shipped
+## Using this
 
-### Phase 2a — Bundle scaffolding (next)
-- `video-mcp` v0.1 with Veo 3.1 + per-tier duration validation (D033)
-- `imagen-mcp` v0.4 with ref-downsize helper baked in (D030)
-- Bundle skeleton: `bundle.yaml`, `agents/`, `behaviors/`, `context/` directories
-- Project-intake checklist agent that runs the D044 protocol automatically
+- Read `spec/SPEC.md` for the frozen design baseline.
+- Read `docs/PRODUCTION_LESSONS.md` for the narrative of two reference cycles — what broke, what changed, why agents are shaped the way they are.
+- Read the last ~10 entries in `spec/DECISIONS.md` for the most recent rulings.
+- Read the agent you're about to invoke (`agents/<name>.md`) before building instructions for it — the `description` field tells you *when* to invoke, the body tells you *how the agent thinks*.
+- Read `docs/OPERATOR_ASSET_INTAKE.md` before starting any project where the operator has provided reference material.
 
-### Phase 2b — Post-production toolkit
-- `produce_vo_track`, `mix_music_vo`, `extend_via_held_frame` (with KB default per D043), `render_narration_synced_overlays` (D042), `verify_audio_audible_at` (D036), `identify_source_font` (D037), `whisper_transcribe`, `vision_analyze_frames`, `pdf_to_pngs`, `build_operator_intent_map` (D041/D044)
-- `init_project_dir(name, output_root)` — creates the D039 layout with placeholder READMEs
+## Contributing
 
-### Phase 2c — Second reference project
-- Run the bundle (not hand-rolled scripts) on a new brief end-to-end
-- Catch whatever v4.1-style gaps this architecture hasn't yet surfaced
-- Cycle updates back into DECISIONS.md and PRODUCTION_LESSONS.md
+Bundle work during v0.1 is happening on `main` directly — no branches, fast iteration. New decisions append to `spec/DECISIONS.md` with a full body entry. New production narratives append to `docs/PRODUCTION_LESSONS.md`. Both files are append-only; never rewrite history.
 
-### Phase 3 — Public beta
-- Docs, examples, `amplifier-bundle-imagen` re-composition
-- Recipe layer (if the orchestration pattern calls for one)
-
----
-
-## How to read the decisions log
-
-`spec/DECISIONS.md` is append-only. Each entry has:
-- **Index table row** at the top: ID, summary, status
-- **Body entry** further down: status, spec section, trigger (what made this surface), resolution, implementation landing, who decided
-
-Entries are grouped by date of resolution. New decisions get added to the most recent date section (or start a new one for a new production cycle). Once resolved, a decision is not edited — if reality changes, a new decision supersedes it and the old entry is annotated with a pointer to the superseder. This is so the log stays forensic: any future reader can reconstruct what we believed at any point, why, and what made it change.
-
-See `docs/PRODUCTION_LESSONS.md` for the narrative arc across decisions — it's the "why" that the DECISIONS entries compress into their "trigger" fields.
-
----
-
-## Contributing / operating
-
-The bundle isn't code yet. For now, the repository exists to version the design and capture the decisions. If you're running the design process as the operator:
-
-1. Read `spec/SPEC.md` for the frozen v0.1 design.
-2. Read the latest `docs/PRODUCTION_LESSONS.md` section to see what the last cycle learned.
-3. Read the last ~5 entries in `spec/DECISIONS.md` — those are the most likely to affect your current work.
-4. If you're starting a new creative project with this bundle's approach, open `docs/OPERATOR_ASSET_INTAKE.md` and run the checklist before any generation.
-
-If you're contributing back: any new decision goes in `spec/DECISIONS.md` with an index row + full body entry following the template of the existing entries. Production narrative and lessons go in `docs/PRODUCTION_LESSONS.md`. Both files are append-only; never rewrite history.
+Agent edits go in `agents/<name>.md`; behavior composition edits go in `behaviors/<name>.yaml`; recipe edits via the `recipes:recipe-author` agent.

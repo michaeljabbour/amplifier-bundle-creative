@@ -1,0 +1,13 @@
+---
+bundle:
+  name: creative-audio-production
+  version: 0.1.0
+  description: Audio production — OpenAI TTS narration OR operator-audio direct-mux, via D034 concat-filter pattern
+
+agents:
+  include:
+    - creative:audio-producer
+
+context:
+  include:
+    - creative:context/creative-awareness.md

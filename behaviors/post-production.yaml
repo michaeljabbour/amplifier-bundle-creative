@@ -1,0 +1,14 @@
+---
+bundle:
+  name: creative-post-production
+  version: 0.1.0
+  description: Post-production — ffmpeg stitching, Ken-Burns extensions (D043), narration-synced overlays (D042), multi-variant masters, QA manifest
+
+agents:
+  include:
+    - creative:post-producer
+    - creative:qa-reviewer
+
+context:
+  include:
+    - creative:context/creative-awareness.md

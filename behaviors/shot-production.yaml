@@ -1,0 +1,17 @@
+---
+bundle:
+  name: creative-shot-production
+  version: 0.1.0
+  description: Shot-level generation — still frames (imagen-mcp) + motion clips (Veo via video-mcp when available, Ken-Burns fallback)
+
+includes:
+  - bundle: git+https://github.com/michaeljabbour/amplifier-bundle-imagen@main
+
+agents:
+  include:
+    - creative:image-generator
+    - creative:video-generator
+
+context:
+  include:
+    - creative:context/creative-awareness.md

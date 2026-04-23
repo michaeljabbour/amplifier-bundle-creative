@@ -1,0 +1,472 @@
+# =============================================================================
+# commercial-from-brief.yaml
+# =============================================================================
+#
+# Flagship recipe. Full commercial pipeline from a verbal brief. Reproduces
+# samples/milk-racing-spot/06_masters/v2_commercial.mp4 given just the brief.
+#
+# This is the greenfield-commercial path: no operator assets (no mockup, no
+# deck, no source IP). intake-analyst runs the null-intake protocol and
+# writes a minimal OPERATOR_INTENT_MAP.md. Music track is optional (if absent,
+# silent master is produced).
+#
+# Key decisions exercised:
+#   D013  operator approval at taste gates (shot list, frames, master)
+#   D025  output to ~/Downloads/{project}-{timestamp}/
+#   D031  OpenAI tts-1-hd narration (default voice=onyx for commercial register)
+#   D033  tier x duration validation on every Veo submit
+#   D034  concat-filter audio track assembly
+#   D036  amplitude verification at VO anchors (not just ffprobe)
+#   D038  music duration drives animation (when music_source is provided)
+#   D039  film-production directory layout
+#   D042  narration-synced overlays
+#   D043  Ken-Burns on held-frame extensions
+#   D044  intake-analyst is always first, even with no operator assets
+#
+# Inputs:
+#   brief_path          (required): path to a markdown brief, OR verbatim text
+#   project_name        (required): short name for the project directory
+#   target_duration_s   (optional, default 27): total deliverable length
+#   aspect_ratio        (optional, default "16:9")
+#   narration_voice     (optional, default "onyx"): OpenAI TTS voice per D031
+#   music_source        (optional): path to music track; absent => silent
+#
+# Outputs:
+#   {project_dir}/06_masters/v1_silent.mp4
+#   {project_dir}/06_masters/v1_clean.mp4   (silent master + audio, no text)
+#   {project_dir}/06_masters/v1_titled.mp4  (final deliverable)
+#   {project_dir}/08_qa/v1_manifest.json
+#
+# Typical runtime: 20-45 minutes (includes Veo wait + 3 approval gates).
+#
+# Usage:
+#   amplifier run "execute commercial-from-brief.yaml with \
+#       brief_path=/path/to/brief.md project_name=milk-racing-spot \
+#       target_duration_s=27 narration_voice=onyx \
+#       music_source=/path/to/track.mp3"
+
+name: "commercial-from-brief"
+description: "Full commercial pipeline from a verbal brief: intake, creative direction, frames, motion, audio, master, QA - with operator approval at shot-list, frames, and master gates"
+version: "0.1.0"
+author: "amplifier-bundle-creative"
+tags: ["creative", "commercial", "flagship", "greenfield", "staged"]
+
+context:
+  brief_path: ""                 # Required: path to brief OR raw text
+  project_name: ""               # Required
+  target_duration_s: 27          # Default per milk-racing-spot reference
+  aspect_ratio: "16:9"
+  narration_voice: "onyx"        # D031: sports/commercial register
+  music_source: ""               # Optional
+
+stages:
+
+  # ---------------------------------------------------------------------------
+  # Stage 1 - Scaffold and minimal intake (null-intake path per D044)
+  # ---------------------------------------------------------------------------
+  - name: "intake"
+    steps:
+      - id: "scaffold-and-stage-brief"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          PROJECT_DIR="$HOME/Downloads/{{project_name}}-$TIMESTAMP"
+          mkdir -p "$PROJECT_DIR/01_source/book_pages" \
+                   "$PROJECT_DIR/02_preproduction/operator_assets" \
+                   "$PROJECT_DIR/03_shots/frames" \
+                   "$PROJECT_DIR/03_shots/motion" \
+                   "$PROJECT_DIR/04_audio/narration" \
+                   "$PROJECT_DIR/04_audio/music" \
+                   "$PROJECT_DIR/04_audio/tracks" \
+                   "$PROJECT_DIR/05_titles" \
+                   "$PROJECT_DIR/06_masters" \
+                   "$PROJECT_DIR/07_logs" \
+                   "$PROJECT_DIR/08_qa" \
+                   "$PROJECT_DIR/99_archive" \
+                   "$PROJECT_DIR/scripts"
+
+          # Brief: file path or verbatim text
+          BRIEF="{{brief_path}}"
+          if [ -f "$BRIEF" ]; then
+            cp "$BRIEF" "$PROJECT_DIR/01_source/brief.md"
+          else
+            printf '%s\n' "$BRIEF" > "$PROJECT_DIR/01_source/brief.md"
+          fi
+
+          # Optional operator music
+          MUSIC="{{music_source}}"
+          if [ -n "$MUSIC" ] && [ -f "$MUSIC" ]; then
+            cp "$MUSIC" "$PROJECT_DIR/04_audio/music/"
+          fi
+
+          printf '%s' "$PROJECT_DIR"
+        output: "project_dir"
+        timeout: 60
+
+      - id: "run-null-intake"
+        agent: "creative:intake-analyst"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          This is a GREENFIELD COMMERCIAL project. Operator provided only a
+          written brief at 01_source/brief.md and optionally a music track
+          under 04_audio/music/. There is no mockup video, no deck, no source
+          IP pages.
+
+          Execute the intake checklist with this reduced scope:
+            - Step 5 (briefs): read 01_source/brief.md, summarize to
+              02_preproduction/brief_summary.md
+            - Step 1 (audio): if any file is present in 04_audio/music/,
+              Whisper-transcribe it to verify is_narrated=false (music-only
+              per D040 expectation). If is_narrated=true, HALT and escalate -
+              commercial work assumes a non-narrated music bed.
+            - Step 6: synthesize a minimal OPERATOR_INTENT_MAP.md that:
+                - declares null for mockup / deck / source_pages
+                - records music duration (if music present) as the D038
+                  duration driver, OR flags the absence and lists
+                  target_duration_s={{target_duration_s}} as the fallback
+                - restates the brief at a high level
+
+          Report back:
+            - Path to OPERATOR_INTENT_MAP.md
+            - Music duration (seconds) or "no music"
+            - Brief summary (3-5 bullets)
+            - Any ambiguity worth flagging to creative-director
+        output: "intake_summary"
+        timeout: 600
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 - Creative direction (shot list + style bible + character sheet)
+  # ---------------------------------------------------------------------------
+  - name: "creative-direction"
+    steps:
+      - id: "direct"
+        agent: "creative:creative-director"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Intake summary:
+          {{intake_summary}}
+
+          Produce the creative spec for this commercial:
+            - 02_preproduction/SHOT_LIST.md    (conforms to SHOT_SPEC_SCHEMA.md)
+            - 02_preproduction/STYLE_BIBLE.md  (register, palette, camera lang)
+            - 02_preproduction/CHARACTER_SHEET.md (if any named characters)
+            - README.md                         (project header per D039)
+
+          Constraints:
+            - Target duration: {{target_duration_s}}s (or music duration if
+              operator supplied a music track per D038 - music wins)
+            - Aspect ratio: {{aspect_ratio}}
+            - Every shot must have a valid tier x duration per D033
+              (lite: 4-6s; fast or standard: 8s)
+            - Each shot gets a tag: character-critical / ambient-transitional /
+              hero-beat / final-deliverable
+            - This is greenfield (no ref pages) - reference_pages may be empty
+              for most shots; flag any shot that would normally need refs
+            - vo_line required on each shot that needs narration (TTS path,
+              since music-only per D040)
+
+          If the brief is ambiguous on 2+ substantive creative dimensions,
+          enumerate 2-3 interpretations with trade-offs and HALT for operator
+          review at the next approval gate rather than guessing.
+
+          Report back:
+            - Shot count and total raw duration
+            - Tier distribution (how many lite/fast/standard)
+            - List of vo_lines (for audio-producer downstream)
+            - Any held-frame extension budget planned to hit target duration
+            - Path to SHOT_LIST.md
+        output: "direction_summary"
+        timeout: 900
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 - Frame and audio generation (gated by creative-direction approval)
+  # ---------------------------------------------------------------------------
+  - name: "generation"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 1 of 3 - CREATIVE DIRECTION
+
+        Project: {{project_dir}}
+
+        Creative-director summary:
+        {{direction_summary}}
+
+        Before any frames or audio are generated, review:
+          1. Open {{project_dir}}/02_preproduction/SHOT_LIST.md
+          2. Open {{project_dir}}/02_preproduction/STYLE_BIBLE.md
+          3. Verify shot count, pacing, and vo_line content match the brief
+          4. Confirm tier x duration assignments look right (D033)
+
+        Approve - proceed to frame generation (image-generator) and TTS
+                  track assembly (audio-producer). These run independently
+                  and can execute concurrently.
+        Deny    - halt. Edit SHOT_LIST.md / STYLE_BIBLE.md manually or re-run
+                  creative-director with adjusted context before resuming.
+      timeout: 0
+      default: "deny"
+    steps:
+
+      # image-generator and audio-producer have no data dependency on each
+      # other per their agent cards. They run sequentially here (schema does
+      # not support named parallel sibling steps), but each is self-contained;
+      # the recipe engine may parallelize internally.
+
+      - id: "generate-frames"
+        agent: "creative:image-generator"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Generate per-shot still frames for every shot in
+          {{project_dir}}/02_preproduction/SHOT_LIST.md.
+
+          Provider selection per your agent card:
+            - Text-heavy / title-card shots -> OpenAI gpt-image-2
+            - Everything else (commercial product/scene) -> Nano Banana Pro
+              (this is greenfield, no character refs required per shot unless
+              creative-director specified them)
+
+          Output frames to {{project_dir}}/03_shots/frames/shotNN_frame.png
+          Log every call to {{project_dir}}/07_logs/image_generation.jsonl
+
+          Match aspect ratio {{aspect_ratio}}. Apply D030 downsizing if any
+          reference images are passed.
+
+          Report back:
+            - Shots generated / total
+            - Provider breakdown (Nano Banana vs gpt-image-2)
+            - Total cost and wall time
+            - Any shots that drifted or required >1 attempt
+        output: "frames_summary"
+        timeout: 2400
+
+      - id: "produce-audio"
+        agent: "creative:audio-producer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Build the audio track for this commercial.
+
+          D040 routing: this is the greenfield-commercial path. If an operator
+          music track exists in 04_audio/music/ and intake-analyst confirmed
+          is_narrated=false, this is the MUSIC-ONLY + TTS path. Otherwise
+          (no music), produce a VO-only track.
+
+          Steps:
+            1. For each vo_line in SHOT_LIST.md, generate TTS via OpenAI
+               tts-1-hd with voice={{narration_voice}}, speed=0.92 (D031).
+            2. Assemble a VO track using the D034 concat-filter pattern ONLY.
+               NEVER amix, NEVER apad, NEVER single-pass loudnorm on the VO
+               assembly - these produced silent masters in the pilot project.
+            3. If music is present, mix music under the assembled VO track
+               (volume 0.35 for music) into 04_audio/tracks/music_vo_v1.m4a.
+               If no music, output 04_audio/tracks/vo_track_v1.m4a.
+            4. Target duration is driven by D038: music length if music
+               present, else {{target_duration_s}}s.
+
+          Log every TTS call and ffmpeg invocation to
+          {{project_dir}}/07_logs/audio_production.jsonl.
+
+          Report back:
+            - Path to final audio track
+            - Duration (seconds)
+            - VO line count
+            - Narration segment timestamps (needed by post-producer for D042)
+        output: "audio_summary"
+        timeout: 1200
+
+  # ---------------------------------------------------------------------------
+  # Stage 4 - Motion clips (gated by frames approval per D036)
+  # ---------------------------------------------------------------------------
+  - name: "motion"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 2 of 3 - FRAMES
+
+        Project: {{project_dir}}
+
+        Image generation summary:
+        {{frames_summary}}
+
+        Audio production summary (runs in parallel, already complete):
+        {{audio_summary}}
+
+        Before any Veo submissions, review the frames per D036:
+          1. Open {{project_dir}}/03_shots/frames/ in Finder
+          2. Compare each shotNN_frame.png against STYLE_BIBLE.md
+          3. Look for character/product drift, wrong composition, typos in
+             any rendered text, wrong aspect ratio
+          4. Character-critical shots deserve the closest attention
+
+        Approve - proceed to video-generator; motion clips will be produced
+                  and Ken-Burns fallback applied per D032/D043 as needed.
+        Deny    - halt. Fix specific frames by re-running image-generator
+                  with tighter refs or different provider, then resume.
+      timeout: 0
+      default: "deny"
+    steps:
+      - id: "generate-motion"
+        agent: "creative:video-generator"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Generate motion clips for every approved frame at
+          {{project_dir}}/03_shots/frames/shotNN_frame.png per the spec in
+          {{project_dir}}/02_preproduction/SHOT_LIST.md.
+
+          Before each Veo 3.1 submit:
+            - Validate tier x duration per D033 (auto-downgrade fast@6 ->
+              lite@6, etc.)
+            - Use the approved frame as first_frame conditioning
+
+          On sustained 429 per D032:
+            - ambient-transitional / final-deliverable -> apply Ken-Burns
+              fallback (zoompan z='min(zoom+0.0006,1.04)') per D043, verify
+              non-static via frame-hash at two sample points
+            - character-critical / hero-beat -> wait for quota; do NOT KB
+
+          For every clip:
+            - Write to {{project_dir}}/03_shots/motion/shotNN_motion.mp4
+            - Extract last frame to shotNN_lastframe.png for continuity
+            - Log provenance to
+              {{project_dir}}/07_logs/video_generation.jsonl
+
+          Report back:
+            - Clips generated / total
+            - Veo vs Ken-Burns split and reasons for any KB fallback
+            - Average wall time per clip
+            - Any clip that failed KB hash verification (should be re-done)
+        output: "motion_summary"
+        timeout: 3600
+
+  # ---------------------------------------------------------------------------
+  # Stage 5 - Post-production (assembly, overlays, mastering variants)
+  # ---------------------------------------------------------------------------
+  - name: "post"
+    steps:
+      - id: "assemble-masters"
+        agent: "creative:post-producer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          All motion clips are in {{project_dir}}/03_shots/motion/ and the
+          assembled audio track is referenced in the audio summary below.
+
+          Motion summary:
+          {{motion_summary}}
+
+          Audio summary:
+          {{audio_summary}}
+
+          Assemble all three master variants per D039:
+            - 06_masters/v1_silent.mp4  (stitched motion, no audio, no text)
+            - 06_masters/v1_clean.mp4   (silent + audio mux, no overlays)
+            - 06_masters/v1_titled.mp4  (clean + D042 narration-synced overlays)
+
+          Apply held-frame Ken-Burns extensions per D043 where the raw motion
+          timeline is short of target duration. Verify KB motion via frame-hash
+          at two timestamps inside each extension; if identical, escalate zoom
+          to 1.08 and regenerate.
+
+          For v1_titled, overlay PNGs render via Pillow using
+          font_identification.json (if available) or a sensible system
+          default. Enable ranges per D042:
+            enable='between(t, narration_start - 0.3, narration_end + 1.0)'
+          Silent music passages = no text on screen.
+
+          Log all ffmpeg commands to {{project_dir}}/07_logs/assembly_v1.log.
+
+          Report back:
+            - Paths to all three master files
+            - Final duration (and whether it matches target within +/-1s)
+            - Extension budget applied (total seconds of KB holds)
+            - Any shot that required zoom escalation
+        output: "post_summary"
+        timeout: 1800
+
+  # ---------------------------------------------------------------------------
+  # Stage 6 - QA (amplitude + visual + manifest)
+  # ---------------------------------------------------------------------------
+  - name: "qa"
+    steps:
+      - id: "qa-review"
+        agent: "creative:qa-reviewer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Run QA on the v1 masters from post-producer.
+
+          Post summary:
+          {{post_summary}}
+
+          Per D036 and your agent card, execute:
+            1. Amplitude verification at every VO anchor timestamp
+               (peak > 500, nonzero > 10%). Music sections sampled every 30s.
+            2. Per-shot visual check against STYLE_BIBLE.md / any refs
+            3. KB motion hash check on every held extension
+            4. Codec / duration verification via ffprobe
+            5. Write three JSONs:
+                08_qa/v1_manifest.json   (authoritative production record)
+                08_qa/v1_qa_report.json  (per-shot verdicts)
+                08_qa/v1_summary.json    (aggregate stats)
+
+          Enforce the D013 taste-vs-hard-rule split strictly:
+            - Hard rule failures (amplitude, KB static, D033 tier) block
+              approval and must route back to the responsible agent.
+            - Taste concerns (looks right? lands emotionally?) pass through
+              to the operator approval gate.
+
+          Report back:
+            - visual_pass_rate / audio_pass_rate
+            - Any hard-rule failures with routing recommendation
+            - Path to v1_manifest.json
+        output: "qa_summary"
+        timeout: 900
+
+  # ---------------------------------------------------------------------------
+  # Stage 7 - Operator approval of master (final D013 gate)
+  # ---------------------------------------------------------------------------
+  - name: "delivery"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 3 of 3 - MASTER
+
+        Project: {{project_dir}}
+
+        QA summary:
+        {{qa_summary}}
+
+        Review the master against the original brief:
+          1. Open {{project_dir}}/06_masters/v1_titled.mp4
+             (and v1_clean.mp4 / v1_silent.mp4 if you want to A/B variants)
+          2. Open {{project_dir}}/08_qa/v1_manifest.json
+          3. Judge against the brief at {{project_dir}}/01_source/brief.md
+
+        Approve - ship it. Recipe finalizes and writes a delivery log.
+        Deny    - halt. Diagnose from qa_report.json and re-run the
+                  relevant stage (usually post-producer for timing issues,
+                  audio-producer for sound issues, or image-generator ->
+                  video-generator for visual issues).
+      timeout: 0
+      default: "deny"
+    steps:
+      - id: "finalize-delivery"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          PD="{{project_dir}}"
+          {
+            echo "Commercial-from-brief v1 approved at $(date)."
+            echo "Project    : $PD"
+            echo "Master     : $PD/06_masters/v1_titled.mp4"
+            echo "Clean      : $PD/06_masters/v1_clean.mp4"
+            echo "Silent     : $PD/06_masters/v1_silent.mp4"
+            echo "Manifest   : $PD/08_qa/v1_manifest.json"
+          } | tee "$PD/07_logs/delivery_v1.log"
+        output: "delivery_report"
+        timeout: 30

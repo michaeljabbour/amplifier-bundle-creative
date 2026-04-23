@@ -1,0 +1,24 @@
+---
+bundle:
+  name: creative-full-production
+  version: 0.1.0
+  description: Complete multi-modal creative production pipeline — all 7 agents + shared context
+
+includes:
+  # Compose the imagen-mcp wrapper bundle for image-generator tool access
+  - bundle: git+https://github.com/michaeljabbour/amplifier-bundle-imagen@main
+
+agents:
+  include:
+    - creative:intake-analyst
+    - creative:creative-director
+    - creative:image-generator
+    - creative:video-generator
+    - creative:audio-producer
+    - creative:post-producer
+    - creative:qa-reviewer
+
+context:
+  include:
+    # Thin awareness pointer — the 30-line capability map
+    - creative:context/creative-awareness.md

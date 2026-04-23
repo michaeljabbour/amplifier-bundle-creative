@@ -1,0 +1,447 @@
+# =============================================================================
+# animate-existing-stills.yaml
+# =============================================================================
+#
+# Skip image generation: operator provides approved stills, the bundle adds
+# motion + audio + master. Useful for turning an image-campaign asset set
+# into motion variants (sizzle reels, social cutdowns, pitch variants).
+#
+# Unlike commercial-from-brief / trailer-from-picture-book, NO intake-analyst
+# pass is required - the frames ARE the operator intent. If shot_list_path
+# is provided, we trust it directly; otherwise creative-director synthesizes
+# a minimal shot list from the stills (setting, mood, suggested tier per
+# D033) so video-generator has something to work from.
+#
+# Key decisions exercised:
+#   D013  operator approval at taste gates (shot list, master)
+#   D025  output to ~/Downloads/{project}-{timestamp}/
+#   D031  OpenAI tts-1-hd if vo_lines supplied
+#   D032  Ken-Burns fallback on sustained Veo 429
+#   D033  tier x duration validation
+#   D034  concat-filter audio track assembly
+#   D036  amplitude verification at VO anchors (if audio present)
+#   D039  film-production directory layout
+#   D042  narration-synced overlays (if vo_lines present)
+#   D043  Ken-Burns on held extensions
+#
+# Inputs:
+#   frames_dir       (required): contains shotNN_frame.png files in shot order
+#   project_name     (required): short name for project directory
+#   shot_list_path   (optional): operator-authored SHOT_LIST.md; if empty,
+#                                creative-director derives one from frames
+#   vo_lines_path    (optional): path to a newline-delimited .txt of
+#                                narration lines in shot order; if empty,
+#                                silent master
+#   music_source     (optional): path to music track; absent => no music
+#   narration_voice  (optional, default "fable"): OpenAI TTS voice per D031
+#   aspect_ratio     (optional, default "16:9")
+#
+# Outputs:
+#   {project_dir}/06_masters/v1_{silent,clean,titled}.mp4
+#   {project_dir}/08_qa/v1_manifest.json
+#
+# Typical runtime: 15-35 minutes depending on frame count and Veo queue.
+#
+# Usage:
+#   amplifier run "execute animate-existing-stills.yaml with \
+#       frames_dir=/path/to/approved-frames project_name=campaign-social \
+#       vo_lines_path=/path/to/vo.txt music_source=/path/to/bed.mp3"
+
+name: "animate-existing-stills"
+description: "Operator-supplied frames to motion master: scaffold, optional auto-shot-list, video-generator + audio-producer, post-producer, QA with shot-list and master approval gates"
+version: "0.1.0"
+author: "amplifier-bundle-creative"
+tags: ["creative", "motion-only", "campaign", "staged"]
+
+context:
+  frames_dir: ""              # Required: dir with shotNN_frame.png files
+  project_name: ""            # Required
+  shot_list_path: ""          # Optional; empty => creative-director synthesizes
+  vo_lines_path: ""           # Optional; empty => silent master (no VO)
+  music_source: ""            # Optional
+  narration_voice: "fable"    # D031 default register for general use
+  aspect_ratio: "16:9"
+
+stages:
+
+  # ---------------------------------------------------------------------------
+  # Stage 1 - Scaffold, copy frames, stage VO lines and music
+  # ---------------------------------------------------------------------------
+  - name: "scaffold"
+    steps:
+      - id: "scaffold-and-stage"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          PROJECT_DIR="$HOME/Downloads/{{project_name}}-$TIMESTAMP"
+          mkdir -p "$PROJECT_DIR/01_source/book_pages" \
+                   "$PROJECT_DIR/02_preproduction/operator_assets" \
+                   "$PROJECT_DIR/03_shots/frames" \
+                   "$PROJECT_DIR/03_shots/motion" \
+                   "$PROJECT_DIR/04_audio/narration" \
+                   "$PROJECT_DIR/04_audio/music" \
+                   "$PROJECT_DIR/04_audio/tracks" \
+                   "$PROJECT_DIR/05_titles" \
+                   "$PROJECT_DIR/06_masters" \
+                   "$PROJECT_DIR/07_logs" \
+                   "$PROJECT_DIR/08_qa" \
+                   "$PROJECT_DIR/99_archive" \
+                   "$PROJECT_DIR/scripts"
+
+          FD="{{frames_dir}}"
+          if [ -z "$FD" ] || [ ! -d "$FD" ]; then
+            echo "ERROR: frames_dir is required and must be an existing directory." >&2
+            echo "       Provided: '$FD'" >&2
+            exit 1
+          fi
+
+          # Copy frames into 03_shots/frames/. Preserve operator filenames if
+          # they match shotNN_frame.png; otherwise rename in sorted order.
+          cd "$FD"
+          shopt -s nullglob
+          # Try operator-native naming first
+          cp shot*_frame.png "$PROJECT_DIR/03_shots/frames/" 2>/dev/null || true
+          # Fallback: any PNG/JPG in sorted order gets renamed shotNN_frame.png
+          if [ -z "$(ls -A "$PROJECT_DIR/03_shots/frames/" 2>/dev/null)" ]; then
+            i=1
+            for f in $(ls -1 *.png *.jpg *.jpeg *.PNG *.JPG *.JPEG 2>/dev/null | sort); do
+              NN=$(printf '%02d' "$i")
+              # Normalize to PNG for downstream consistency
+              if [[ "$f" == *.png || "$f" == *.PNG ]]; then
+                cp "$f" "$PROJECT_DIR/03_shots/frames/shot${NN}_frame.png"
+              else
+                # jpg -> png via sips (macOS) with graceful fallback
+                sips -s format png "$f" --out "$PROJECT_DIR/03_shots/frames/shot${NN}_frame.png" >/dev/null 2>&1 \
+                  || cp "$f" "$PROJECT_DIR/03_shots/frames/shot${NN}_frame.png"
+              fi
+              i=$((i+1))
+            done
+          fi
+          shopt -u nullglob
+
+          FRAME_COUNT=$(ls -1 "$PROJECT_DIR/03_shots/frames/"shot*_frame.png 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$FRAME_COUNT" -eq 0 ]; then
+            echo "ERROR: no usable frames found in $FD" >&2
+            exit 1
+          fi
+
+          # Optional operator-authored shot list
+          SLP="{{shot_list_path}}"
+          if [ -n "$SLP" ] && [ -f "$SLP" ]; then
+            cp "$SLP" "$PROJECT_DIR/02_preproduction/SHOT_LIST.md"
+          fi
+
+          # Optional VO lines
+          VLP="{{vo_lines_path}}"
+          if [ -n "$VLP" ] && [ -f "$VLP" ]; then
+            cp "$VLP" "$PROJECT_DIR/02_preproduction/vo_lines.txt"
+          fi
+
+          # Optional music
+          MUSIC="{{music_source}}"
+          if [ -n "$MUSIC" ] && [ -f "$MUSIC" ]; then
+            cp "$MUSIC" "$PROJECT_DIR/04_audio/music/"
+          fi
+
+          printf '%s' "$PROJECT_DIR"
+        output: "project_dir"
+        timeout: 180
+
+      - id: "count-frames"
+        type: "bash"
+        command: |
+          ls -1 "{{project_dir}}/03_shots/frames/"shot*_frame.png | wc -l | tr -d ' '
+        output: "frame_count"
+        timeout: 30
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 - Shot list: either trust operator's, or derive one
+  # ---------------------------------------------------------------------------
+  - name: "shot-list"
+    steps:
+      - id: "derive-shot-list"
+        # Skip if operator supplied their own shot list
+        condition: "{{shot_list_path}} == ''"
+        agent: "creative:creative-director"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          The operator has provided approved stills at
+          {{project_dir}}/03_shots/frames/shotNN_frame.png ({{frame_count}}
+          frames) but no shot list. No intake, no brief, no style bible -
+          the frames ARE the creative direction. Your job is to produce a
+          MINIMAL, VALID SHOT_LIST.md so video-generator and post-producer
+          can work from it.
+
+          Per-shot analysis (vision-inspect each frame):
+            - action / motion delta the shot should suggest (e.g., "slow
+              push-in on the product", "hero turns toward camera")
+            - setting / mood (one line each)
+            - tier x duration per D033:
+                * Default to lite@6s for ambient-transitional / establishing
+                * fast@8s or standard@8s only for character-critical or
+                  hero-beat shots where extra Veo fidelity is justified
+            - tag: character-critical / ambient-transitional / hero-beat /
+                   final-deliverable
+            - reference_pages: leave empty (no existing IP)
+            - page_text_overlay: null
+            - vo_line: populate ONLY if the operator supplied vo_lines_path
+              (one line per shot, in order); otherwise null
+
+          Also emit a minimal STYLE_BIBLE.md describing the visual register
+          you infer from the frames (palette / light direction / register).
+          This is a lightweight pass - do NOT invent creative intent the
+          frames don't support.
+
+          Aspect ratio: {{aspect_ratio}}
+
+          Write:
+            02_preproduction/SHOT_LIST.md
+            02_preproduction/STYLE_BIBLE.md
+            README.md (project header)
+
+          If {{project_dir}}/02_preproduction/vo_lines.txt exists, map lines
+          1:1 to shots in order. If the count mismatches frame count, HALT
+          and escalate rather than guessing.
+
+          Report back:
+            - Shot count, tier distribution
+            - Total raw duration and any planned held-extension budget
+            - Path to SHOT_LIST.md
+        output: "shot_list_summary"
+        timeout: 900
+
+      - id: "confirm-existing-shot-list"
+        condition: "{{shot_list_path}} != ''"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          SL="{{project_dir}}/02_preproduction/SHOT_LIST.md"
+          if [ ! -f "$SL" ]; then
+            echo "ERROR: shot_list_path was provided but SHOT_LIST.md not staged at $SL" >&2
+            exit 1
+          fi
+          echo "Using operator-supplied shot list at $SL"
+          wc -l "$SL"
+        output: "shot_list_summary"
+        timeout: 30
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 - Motion + audio (gated by shot-list approval)
+  # ---------------------------------------------------------------------------
+  - name: "generation"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 1 of 2 - SHOT LIST
+
+        Project: {{project_dir}}
+
+        Shot-list summary:
+        {{shot_list_summary}}
+
+        Before Veo submissions and any TTS generation:
+          1. Open {{project_dir}}/02_preproduction/SHOT_LIST.md
+          2. Verify the shot ordering matches your intended pacing
+          3. Confirm tier x duration assignments (D033: lite 4-6s, fast/std 8s)
+          4. If VO lines were supplied, confirm mapping to shots is correct
+          5. Spot-check 03_shots/frames/ files are in shot order
+
+        Approve - video-generator + audio-producer proceed.
+        Deny    - halt. Edit SHOT_LIST.md manually or re-run with a corrected
+                  shot_list_path / vo_lines_path before resuming.
+      timeout: 0
+      default: "deny"
+    steps:
+
+      - id: "generate-motion"
+        agent: "creative:video-generator"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Generate motion clips for every operator-approved frame at
+          03_shots/frames/shotNN_frame.png per the spec in SHOT_LIST.md.
+
+          Per-shot:
+            1. Validate tier x duration per D033 before Veo submit; auto-
+               downgrade invalid pairs.
+            2. Submit to Veo 3.1 with first_frame conditioning using the
+               approved frame as-is (do NOT regenerate the frame).
+            3. On sustained 429 per D032: ambient-transitional /
+               final-deliverable -> Ken-Burns fallback per D043. Character-
+               critical / hero-beat -> wait for quota.
+            4. Verify Ken-Burns motion via frame-hash at two sample points;
+               escalate to zoom 1.08 if identical.
+            5. Write to 03_shots/motion/shotNN_motion.mp4 and extract last
+               frame to shotNN_lastframe.png.
+            6. Log to 07_logs/video_generation.jsonl.
+
+          Report back:
+            - Clips produced / total
+            - Veo vs Ken-Burns split (and tag-justified reasons)
+            - Any tier-downgrade corrections
+        output: "motion_summary"
+        timeout: 3600
+
+      - id: "produce-audio"
+        # Skip entirely if no VO lines AND no music - silent master
+        condition: "{{vo_lines_path}} != '' or {{music_source}} != ''"
+        agent: "creative:audio-producer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          This is the motion-from-stills path. There is no operator-narrated
+          audio (no D040 direct-mux). Audio assembly per inputs:
+
+            - If 02_preproduction/vo_lines.txt exists (one VO line per shot,
+              in order), generate TTS via OpenAI tts-1-hd,
+              voice={{narration_voice}}, speed=0.92 (D031). Map each line to
+              its shot start timestamp from SHOT_LIST.md.
+            - Assemble the VO track with the D034 concat-filter pattern ONLY.
+              NEVER amix / apad / single-pass loudnorm on VO assembly.
+            - If a music track exists in 04_audio/music/, mix it under the
+              assembled VO at volume=0.35 into 04_audio/tracks/music_vo_v1.m4a.
+              If VO lines are absent but music is present, the music IS the
+              track - write it directly (normalized) to
+              04_audio/tracks/music_only_v1.m4a.
+            - Log every TTS call and ffmpeg invocation to
+              07_logs/audio_production.jsonl.
+
+          Report back:
+            - Path to final audio track
+            - Duration (seconds)
+            - VO line count (0 if music-only)
+            - Narration segment timestamps (for D042 overlay timing) if any
+        output: "audio_summary"
+        timeout: 900
+
+      - id: "note-silent-master"
+        condition: "{{vo_lines_path}} == '' and {{music_source}} == ''"
+        type: "bash"
+        command: |
+          echo "No vo_lines_path and no music_source - producing SILENT master only."
+          echo "post-producer will write v1_silent.mp4 and skip v1_clean / v1_titled."
+        output: "audio_summary"
+        timeout: 10
+
+  # ---------------------------------------------------------------------------
+  # Stage 4 - Post-production (assembly + optional overlays + masters)
+  # ---------------------------------------------------------------------------
+  - name: "post"
+    steps:
+      - id: "assemble-masters"
+        agent: "creative:post-producer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Motion clips in 03_shots/motion/. Audio context:
+            {{audio_summary}}
+
+          Produce masters:
+            - 06_masters/v1_silent.mp4 (always)
+            - 06_masters/v1_clean.mp4  (only if an audio track exists)
+            - 06_masters/v1_titled.mp4 (only if narration-synced overlays
+              are applicable - i.e., VO lines were generated and SHOT_LIST.md
+              defined page_text_overlay or title-card text on any shot)
+
+          Apply held-frame Ken-Burns extensions per D043 only if SHOT_LIST.md
+          specifies extension budget. Verify non-static motion via frame-hash.
+
+          D042 overlays: enable range
+             enable='between(t, narration_start - 0.3, narration_end + 1.0)'
+          using narration segment timestamps from the audio summary. Silent
+          passages = no text. If no overlays are applicable, SKIP the titled
+          variant and note in the assembly log.
+
+          Log all ffmpeg commands to 07_logs/assembly_v1.log.
+
+          Report back:
+            - Paths to master(s) produced
+            - Which variants were skipped and why
+            - Final duration for each master
+            - Any KB zoom escalation applied
+        output: "post_summary"
+        timeout: 1800
+
+  # ---------------------------------------------------------------------------
+  # Stage 5 - QA (amplitude + visual + manifest)
+  # ---------------------------------------------------------------------------
+  - name: "qa"
+    steps:
+      - id: "qa-review"
+        agent: "creative:qa-reviewer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Post summary: {{post_summary}}
+
+          Run a scoped QA pass:
+            1. For every master variant produced, run the D036 amplitude check
+               at each VO anchor (if audio present). peak > 500, nonzero > 10%.
+               Music-only masters: sample every 30s, expect peak > 200.
+               Silent masters: skip amplitude, note in report.
+            2. Per-shot visual check is LIGHT-TOUCH here - frames were
+               operator-approved inputs, so the question is whether motion
+               preserved the composition. Flag any motion clip that clearly
+               drifted from its first frame.
+            3. KB motion hash check on every shot with motion_source=
+               ken-burns and every held extension.
+            4. Codec / duration / shot-count verification via ffprobe.
+            5. Write:
+                 08_qa/v1_manifest.json
+                 08_qa/v1_qa_report.json
+                 08_qa/v1_summary.json
+
+          D013 hard rules still apply: amplitude, KB static, D033 tier.
+
+          Report back:
+            - visual_pass_rate, audio_pass_rate (or "n/a silent" as needed)
+            - Any hard-rule failure and routing recommendation
+            - Path to v1_manifest.json
+        output: "qa_summary"
+        timeout: 900
+
+  # ---------------------------------------------------------------------------
+  # Stage 6 - Delivery (gated by master approval per D013)
+  # ---------------------------------------------------------------------------
+  - name: "delivery"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 2 of 2 - MASTER
+
+        Project: {{project_dir}}
+
+        QA summary:
+        {{qa_summary}}
+
+        Review the deliverable(s):
+          1. Play {{project_dir}}/06_masters/v1_silent.mp4  (baseline)
+          2. Play {{project_dir}}/06_masters/v1_clean.mp4   (if present)
+          3. Play {{project_dir}}/06_masters/v1_titled.mp4  (if present)
+          4. Open {{project_dir}}/08_qa/v1_manifest.json for provenance
+
+        Approve - ship it; recipe finalizes with a delivery log.
+        Deny    - halt. Re-run the relevant stage:
+                    - video-generator for motion drift on specific shots
+                    - audio-producer for VO / mix issues
+                    - post-producer for timing / overlay fixes
+      timeout: 0
+      default: "deny"
+    steps:
+      - id: "finalize-delivery"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          PD="{{project_dir}}"
+          {
+            echo "animate-existing-stills v1 approved at $(date)."
+            echo "Project  : $PD"
+            echo "Silent   : $PD/06_masters/v1_silent.mp4"
+            [ -f "$PD/06_masters/v1_clean.mp4"  ] && echo "Clean    : $PD/06_masters/v1_clean.mp4"  || echo "Clean    : (not produced - silent master only)"
+            [ -f "$PD/06_masters/v1_titled.mp4" ] && echo "Titled   : $PD/06_masters/v1_titled.mp4" || echo "Titled   : (not produced - no overlays applicable)"
+            echo "Manifest : $PD/08_qa/v1_manifest.json"
+          } | tee "$PD/07_logs/delivery_v1.log"
+        output: "delivery_report"
+        timeout: 30

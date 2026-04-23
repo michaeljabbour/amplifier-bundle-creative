@@ -1,0 +1,14 @@
+---
+bundle:
+  name: creative-pre-production
+  version: 0.1.0
+  description: Pre-production phase — operator asset intake + shot list/style bible authoring
+
+agents:
+  include:
+    - creative:intake-analyst
+    - creative:creative-director
+
+context:
+  include:
+    - creative:context/creative-awareness.md

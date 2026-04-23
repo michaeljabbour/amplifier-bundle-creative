@@ -1,0 +1,163 @@
+# =============================================================================
+# project-intake.yaml
+# =============================================================================
+#
+# Standalone intake pass. Use when the operator wants to drop assets into a
+# project directory and see what intake-analyst extracts BEFORE committing to
+# a full production run.
+#
+# D044: intake is the first-class first step of every project.
+# D041: multi-modal analysis (audio + video + deck + source pages).
+# D039: film-production directory layout.
+# D025: artifacts write to ~/Downloads/{project}-{YYYYMMDD-HHMMSS}/.
+#
+# Inputs:
+#   project_name (required): used to build the project directory name
+#   source_dir   (optional): if set, contents are copied into 01_source/
+#
+# Outputs:
+#   {project_dir}/02_preproduction/OPERATOR_INTENT_MAP.md
+#   {project_dir}/02_preproduction/operator_assets/*
+#   {project_dir}/02_preproduction/brief_summary.md (if briefs present)
+#   {project_dir}/02_preproduction/book_text_extracted.json (if book pages)
+#   {project_dir}/02_preproduction/font_identification.json (if book pages)
+#
+# Typical runtime: 3-8 minutes, ~$0.18 API cost (per intake-analyst spec).
+#
+# Usage:
+#   amplifier run "execute project-intake.yaml with project_name=my-project \
+#       source_dir=/path/to/assets"
+#
+# Approval:
+#   Recipe pauses once for operator review of OPERATOR_INTENT_MAP.md.
+#   Approve to finalize intake. Deny to halt (re-run with adjusted assets).
+
+name: "project-intake"
+description: "Standalone D041/D044 intake pass: scaffold project, analyze all operator assets, produce OPERATOR_INTENT_MAP.md for review"
+version: "0.1.0"
+author: "amplifier-bundle-creative"
+tags: ["creative", "intake", "preproduction", "D041", "D044"]
+
+context:
+  project_name: ""         # Required
+  source_dir: ""           # Optional: path to operator-supplied assets
+
+stages:
+
+  # ---------------------------------------------------------------------------
+  # Stage 1 - Scaffold the D039 project structure and stage operator assets
+  # ---------------------------------------------------------------------------
+  - name: "scaffold"
+    steps:
+      - id: "create-project-dir"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          PROJECT_DIR="$HOME/Downloads/{{project_name}}-$TIMESTAMP"
+          mkdir -p "$PROJECT_DIR/01_source/book_pages" \
+                   "$PROJECT_DIR/02_preproduction/operator_assets" \
+                   "$PROJECT_DIR/03_shots/frames" \
+                   "$PROJECT_DIR/03_shots/motion" \
+                   "$PROJECT_DIR/04_audio/narration" \
+                   "$PROJECT_DIR/04_audio/music" \
+                   "$PROJECT_DIR/04_audio/tracks" \
+                   "$PROJECT_DIR/05_titles" \
+                   "$PROJECT_DIR/06_masters" \
+                   "$PROJECT_DIR/07_logs" \
+                   "$PROJECT_DIR/08_qa" \
+                   "$PROJECT_DIR/99_archive" \
+                   "$PROJECT_DIR/scripts"
+
+          SRC="{{source_dir}}"
+          if [ -n "$SRC" ] && [ -d "$SRC" ]; then
+            # Copy (not symlink) so the run directory is self-contained per D025.
+            cp -R "$SRC"/. "$PROJECT_DIR/01_source/" 2>/dev/null || true
+          fi
+
+          printf '%s' "$PROJECT_DIR"
+        output: "project_dir"
+        timeout: 60
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 - Run the D041/D044 intake checklist
+  # ---------------------------------------------------------------------------
+  - name: "analyze"
+    steps:
+      - id: "run-intake"
+        agent: "creative:intake-analyst"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Run the full D041/D044 operator asset intake checklist for this
+          project. Your working tree is the D039-scaffolded directory at
+          {{project_dir}}. Enumerate 01_source/ and execute every applicable
+          step of the protocol defined in your agent card:
+
+          1. Audio tracks  - Whisper-transcribe, flag narrated vs music-only
+          2. Reference video/mockups - frame extraction + vision analysis
+          3. Storyboard decks (PDF/PPTX) - per-slide vision analysis
+          4. Source IP pages - literal text extraction + multi-sample font ID
+          5. Briefs/notes - summarize to brief_summary.md
+          6. Synthesize OPERATOR_INTENT_MAP.md at
+             {{project_dir}}/02_preproduction/OPERATOR_INTENT_MAP.md
+          7. If 01_source/ is empty, run the null-intake five-question protocol
+
+          All outputs write under {{project_dir}}/02_preproduction/ per the
+          agent's output contract. Do NOT delegate to creative-director - this
+          is a standalone intake pass; the operator reviews before any
+          downstream work.
+
+          When finished, report:
+            - Asset types discovered (audio / video / deck / book pages / briefs / none)
+            - is_narrated verdict for any audio
+            - Font identification summary (if applicable)
+            - Full path to OPERATOR_INTENT_MAP.md
+            - Any gaps or ambiguities that warrant operator follow-up
+        output: "intake_summary"
+        timeout: 1800
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 - Operator review of the intent map (approval gate per D013)
+  # ---------------------------------------------------------------------------
+  - name: "review-and-finalize"
+    approval:
+      required: true
+      prompt: |
+        INTAKE COMPLETE - review before closing the intake pass.
+
+        Project directory:
+          {{project_dir}}
+
+        Intake summary from creative:intake-analyst:
+        {{intake_summary}}
+
+        Next actions:
+          1. Open {{project_dir}}/02_preproduction/OPERATOR_INTENT_MAP.md
+          2. Verify asset inventory matches what you dropped in 01_source/
+          3. Confirm narrated-vs-music verdict on any audio
+          4. Confirm font identification for any source-IP pages
+          5. Check brief_summary.md captures your intent
+
+        Approve  - intake is accepted; project is ready for downstream recipes
+                   (commercial-from-brief, trailer-from-picture-book, etc.).
+        Deny     - intake is rejected; re-run with adjusted source_dir or
+                   ask intake-analyst for targeted re-analysis of specific
+                   assets.
+      timeout: 0      # Wait indefinitely - intake review should not auto-expire
+      default: "deny"
+    steps:
+      - id: "finalize-intake"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          PD="{{project_dir}}"
+          echo "Intake accepted at $(date)." > "$PD/07_logs/intake_approved.log"
+          echo "Project dir: $PD"
+          echo "Intent map : $PD/02_preproduction/OPERATOR_INTENT_MAP.md"
+          echo ""
+          echo "Ready for downstream recipes. Pass project_dir and associated"
+          echo "context to commercial-from-brief, trailer-from-picture-book,"
+          echo "or animate-existing-stills."
+        output: "finalization_report"
+        timeout: 30

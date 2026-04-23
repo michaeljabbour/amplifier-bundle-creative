@@ -1,0 +1,508 @@
+# =============================================================================
+# trailer-from-picture-book.yaml
+# =============================================================================
+#
+# Picture-book (or similar existing-IP) -> animated trailer. Exercises the
+# D028/D029 reference-image-first pipeline. Models the pilot-project arc that
+# produced decisions D020-D044 in compressed form.
+#
+# Key decisions exercised:
+#   D013  operator approval at taste gates (intake, direction, frames+audio, master)
+#   D025  output to ~/Downloads/{project}-{timestamp}/
+#   D028  reference-image-first generation for existing IP (mandatory)
+#   D029  setting-match ref selection (beats face-clarity for wrong setting)
+#   D030  downsize refs to <=1400px before Nano Banana Pro
+#   D031  OpenAI tts-1-hd (default voice=fable for picture-book register)
+#   D033  tier x duration validation
+#   D034  concat-filter audio assembly
+#   D036  amplitude verification at VO anchors
+#   D037  multi-sample font identification
+#   D038  music/narration duration drives animation
+#   D039  film-production directory layout
+#   D040  direct-mux operator narration (NEVER stack TTS on top)
+#   D041  full multi-modal intake protocol
+#   D042  narration-synced overlays
+#   D043  Ken-Burns on held extensions
+#   D044  intake first, always
+#
+# Inputs:
+#   source_dir         (required): contains book_pages/*.png and optional
+#                                  operator audio (music or narrated track)
+#   project_name       (required): short name for project directory
+#   target_duration_s  (optional): if absent, derived from operator audio
+#                                  duration per D038
+#
+# Outputs:
+#   {project_dir}/06_masters/v1_{silent,clean,titled}.mp4
+#   {project_dir}/08_qa/v1_manifest.json
+#
+# Typical runtime: 40-90 minutes depending on page count and Veo queue.
+#
+# Usage:
+#   amplifier run "execute trailer-from-picture-book.yaml with \
+#       source_dir=/path/to/book-assets project_name=little-blue-bus \
+#       target_duration_s=180"
+
+name: "trailer-from-picture-book"
+description: "Existing-IP picture-book to animated trailer: D028/D029 ref-first image gen, D040 narration routing, full intake + approval gates"
+version: "0.1.0"
+author: "amplifier-bundle-creative"
+tags: ["creative", "trailer", "picture-book", "existing-ip", "staged", "D028"]
+
+context:
+  source_dir: ""              # Required: contains book_pages/ + optional audio
+  project_name: ""            # Required
+  target_duration_s: 0        # 0 = derive from operator audio (D038)
+
+stages:
+
+  # ---------------------------------------------------------------------------
+  # Stage 1 - Scaffold + full D041/D044 intake
+  # ---------------------------------------------------------------------------
+  - name: "intake"
+    steps:
+      - id: "scaffold-and-copy-source"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          PROJECT_DIR="$HOME/Downloads/{{project_name}}-$TIMESTAMP"
+          mkdir -p "$PROJECT_DIR/01_source/book_pages" \
+                   "$PROJECT_DIR/02_preproduction/operator_assets" \
+                   "$PROJECT_DIR/03_shots/frames" \
+                   "$PROJECT_DIR/03_shots/motion" \
+                   "$PROJECT_DIR/04_audio/narration" \
+                   "$PROJECT_DIR/04_audio/music" \
+                   "$PROJECT_DIR/04_audio/tracks" \
+                   "$PROJECT_DIR/05_titles" \
+                   "$PROJECT_DIR/06_masters" \
+                   "$PROJECT_DIR/07_logs" \
+                   "$PROJECT_DIR/08_qa" \
+                   "$PROJECT_DIR/99_archive" \
+                   "$PROJECT_DIR/scripts"
+
+          SRC="{{source_dir}}"
+          if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+            echo "ERROR: source_dir is required and must be an existing directory." >&2
+            echo "       Provided: '$SRC'" >&2
+            exit 1
+          fi
+          cp -R "$SRC"/. "$PROJECT_DIR/01_source/" 2>/dev/null || true
+
+          # Normalize: if the operator placed page scans at the root of
+          # source_dir rather than in book_pages/, move them into book_pages/.
+          if [ -z "$(ls -A "$PROJECT_DIR/01_source/book_pages/" 2>/dev/null)" ]; then
+            shopt -s nullglob
+            moved=0
+            for f in "$PROJECT_DIR/01_source/"*.{png,PNG,jpg,JPG,jpeg,JPEG}; do
+              mv "$f" "$PROJECT_DIR/01_source/book_pages/"
+              moved=1
+            done
+            shopt -u nullglob
+            [ "$moved" -eq 1 ] && echo "Moved page scans from 01_source/ to 01_source/book_pages/" >&2
+          fi
+
+          printf '%s' "$PROJECT_DIR"
+        output: "project_dir"
+        timeout: 120
+
+      - id: "full-intake"
+        agent: "creative:intake-analyst"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Run the full D041/D044 intake checklist against
+          {{project_dir}}/01_source/. Expected asset mix for a picture-book
+          trailer:
+
+            - book_pages/*.png|jpg            (REQUIRED - existing IP per D028)
+            - *.mp3|wav|m4a|aac|flac          (optional - music or narration)
+            - *.pdf|pptx                      (optional - storyboard deck)
+            - *.mov|mp4                       (optional - reference mockup)
+            - *.md                            (optional - brief / style notes)
+
+          Required outputs:
+            - 02_preproduction/operator_assets/audio_transcript.json  (if audio)
+            - 02_preproduction/book_text_extracted.json                (D035)
+            - 02_preproduction/font_identification.json                (D037)
+                * Use multi-sample vision: 3+ text-region crops from 2+ pages
+                * Prompt explicitly for handwriting-vs-serif distinction
+                * Record confidence and recommended_system_font
+            - 02_preproduction/brief_summary.md                        (if briefs)
+            - 02_preproduction/OPERATOR_INTENT_MAP.md                  (ALWAYS)
+
+          D040 CRITICAL: if any operator audio file has is_narrated=true,
+          flag it as "narrated master". Downstream audio-producer must
+          direct-mux it - NEVER stack TTS on top. Record the narration
+          segment timestamps; post-producer will use them for D042 overlay
+          timing.
+
+          D038: record the master duration driver. Music length wins; if no
+          music but narration present, use narration length; if neither, use
+          target_duration_s={{target_duration_s}} (0 means "ask operator").
+
+          Report back:
+            - Page count in book_pages/
+            - is_narrated verdict and audio duration (if any audio)
+            - Font identification (primary guess + confidence)
+            - Declared master duration driver and resulting target length
+            - Any missing assets that warrant operator follow-up
+        output: "intake_summary"
+        timeout: 2400
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 - Creative direction (gated by intake approval)
+  # ---------------------------------------------------------------------------
+  - name: "creative-direction"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 1 of 4 - INTAKE
+
+        Project: {{project_dir}}
+
+        Intake summary:
+        {{intake_summary}}
+
+        Before creative-director writes the shot list, confirm:
+          1. Open {{project_dir}}/02_preproduction/OPERATOR_INTENT_MAP.md
+          2. Verify page count and book-text extraction look correct
+          3. Confirm is_narrated verdict on audio (critical for D040 routing)
+          4. Spot-check font identification against 2-3 pages
+          5. Confirm the declared master duration driver
+
+        Approve - proceed to creative-director for shot list, style bible,
+                  character sheet.
+        Deny    - halt. Ask intake-analyst to re-run specific steps with
+                  tighter prompts, or adjust source_dir contents.
+      timeout: 0
+      default: "deny"
+    steps:
+      - id: "direct"
+        agent: "creative:creative-director"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Intake summary:
+          {{intake_summary}}
+
+          Produce:
+            - 02_preproduction/SHOT_LIST.md
+                * One or more shots per book page, with page_anchor recorded
+                * Each shot gets a tier x duration valid per D033
+                * character-critical tag on every shot with a named character
+                * reference_pages per D028/D029 (setting-match first, <=4 refs)
+                * page_text_overlay: verbatim from book_text_extracted.json
+                  (D035 - NEVER paraphrase), or null if no printed text
+                * vo_line: null if D040 direct-mux path (narrated operator
+                  audio), else TTS line for music-only path
+            - 02_preproduction/STYLE_BIBLE.md
+            - 02_preproduction/CHARACTER_SHEET.md
+                * D028: minimum 3 source pages per named character
+                * HALT and escalate if <3 pages available for any character
+                * D029: rank refs by setting-match first
+            - README.md
+
+          D038: total shot duration + planned Ken-Burns held extensions must
+          sum to the master duration driver identified during intake. Record
+          the extension budget in SHOT_LIST.md production notes.
+
+          Report back:
+            - Shot count, page-to-shot mapping summary
+            - Tier distribution and total raw duration
+            - Extension budget (sum of planned held holds)
+            - Any character that triggered the <3-ref halt
+            - D040 routing verdict (direct-mux vs TTS) restated for clarity
+        output: "direction_summary"
+        timeout: 1200
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 - Frame generation + audio (gated by creative-direction approval)
+  # ---------------------------------------------------------------------------
+  - name: "generation"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 2 of 4 - CREATIVE DIRECTION
+
+        Project: {{project_dir}}
+
+        Creative-director summary:
+        {{direction_summary}}
+
+        Before frame generation begins:
+          1. Open {{project_dir}}/02_preproduction/SHOT_LIST.md
+          2. Open {{project_dir}}/02_preproduction/STYLE_BIBLE.md
+          3. Open {{project_dir}}/02_preproduction/CHARACTER_SHEET.md
+          4. Spot-check that reference_pages on character-critical shots are
+             sensible (setting-match first per D029)
+          5. Confirm page_text_overlay fields match the book verbatim
+
+        Approve - image-generator (Nano Banana Pro with D028/D029 ref
+                  conditioning) + audio-producer (D040 routing) both run.
+        Deny    - halt and revise shot list before proceeding.
+      timeout: 0
+      default: "deny"
+    steps:
+
+      # image-generator and audio-producer are independent per agent cards.
+      # Sequential in the recipe but logically parallel; the engine can
+      # parallelize internally.
+
+      - id: "generate-frames"
+        agent: "creative:image-generator"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Generate per-shot frames for every shot in SHOT_LIST.md using the
+          D028 ref-conditioning discipline.
+
+          Per-shot protocol:
+            1. Load reference_pages for the shot; cap at 4 refs
+            2. Downsize each ref to <=1400px longest edge per D030
+               (ImageMagick convert -resize 1400x1400\> -quality 95)
+            3. Route provider per your agent card:
+                 - Named character on screen           -> Nano Banana Pro
+                 - Text-heavy / title card             -> OpenAI gpt-image-2
+                 - No char, no text, existing-IP scene -> Nano Banana Pro
+            4. Prompt grammar for Nano Banana Pro: describe ONLY the
+               delta (composition / pose / action). Character design comes
+               from refs, NOT from adjectives. No brand logos, no text, no
+               watermarks.
+            5. Write to 03_shots/frames/shotNN_frame.png
+            6. Log provenance to 07_logs/image_generation.jsonl
+
+          Process order: character-critical shots first (early drift
+          detection), then ambient-transitional.
+
+          If character drift detected on a shot after 2 attempts, regenerate
+          with 4 tightest refs; third failure -> HANDOFF to creative-director
+          (do not silently accept).
+
+          Report back:
+            - Frames generated / total; provider split
+            - Any shot that hit the 3-attempt drift escalation
+            - Total cost and wall time
+        output: "frames_summary"
+        timeout: 4800
+
+      - id: "produce-audio"
+        agent: "creative:audio-producer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Build the audio track using the D040 routing decision already
+          recorded by intake-analyst in audio_transcript.json.
+
+          Routing:
+            - is_narrated=true  ->  DIRECT-MUX ONLY. Operator audio is the
+              master. Do NOT synthesize TTS on top (this was the v3 pilot
+              bug). Extract narration segment timestamps for post-producer
+              D042 overlay timing.
+            - is_narrated=false ->  TTS path. Generate one TTS clip per
+              vo_line via OpenAI tts-1-hd, voice=fable, speed=0.92 (D031
+              default for picture-book register). Assemble with D034
+              concat-filter. Mix operator music UNDER VO at volume=0.35.
+
+          D034 constraints on VO assembly: concat-filter ONLY. NEVER amix,
+          apad, or single-pass loudnorm on the VO track build.
+
+          Write final track to 04_audio/tracks/music_vo_v1.m4a or
+          04_audio/tracks/vo_track_v1.m4a (whichever applies).
+
+          Report back:
+            - Routing verdict (direct-mux vs TTS)
+            - Path to final track + duration
+            - Narration segment timestamps (timestamp list or note "see
+              audio_transcript.json")
+        output: "audio_summary"
+        timeout: 1800
+
+  # ---------------------------------------------------------------------------
+  # Stage 4 - Motion clips (gated by frames + audio approval)
+  # ---------------------------------------------------------------------------
+  - name: "motion"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 3 of 4 - FRAMES + AUDIO
+
+        Project: {{project_dir}}
+
+        Frames:  {{frames_summary}}
+
+        Audio:   {{audio_summary}}
+
+        Before any Veo submissions:
+          1. Open {{project_dir}}/03_shots/frames/ and spot-check character-
+             critical shots against CHARACTER_SHEET.md refs
+          2. Spot-check page_text in title-card shots for typos
+          3. Play the audio track - verify narration (if direct-mux) or TTS
+             pacing (if synthesized) lands correctly
+          4. Confirm final audio duration matches the expected target
+
+        Approve - video-generator produces motion clips per SHOT_LIST.md
+                  with D032 quota policy and D033 tier validation.
+        Deny    - halt. Re-run image-generator with tighter refs on specific
+                  shots, or re-run audio-producer if routing was wrong.
+      timeout: 0
+      default: "deny"
+    steps:
+      - id: "generate-motion"
+        agent: "creative:video-generator"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          For every frame in {{project_dir}}/03_shots/frames/:
+            1. Validate tier x duration per D033 before Veo submit. Auto-
+               downgrade fast@6 -> lite@6, standard@6 -> lite@6, fast@4 ->
+               lite@4. Log corrections.
+            2. Submit to Veo 3.1 with first_frame conditioning. Poll until
+               complete or failed.
+            3. On sustained 429 (3 retries fail) per D032:
+                 * ambient-transitional / final-deliverable -> Ken-Burns
+                   fallback per D043 (zoompan z='min(zoom+0.0006,1.04)')
+                 * character-critical / hero-beat -> WAIT for quota; do NOT
+                   apply Ken-Burns. Re-queue; escalate to operator after
+                   60 min.
+            4. Verify Ken-Burns motion via frame-hash at two sample points.
+               Identical hashes -> static -> escalate zoom to 1.08.
+            5. Write clips to 03_shots/motion/shotNN_motion.mp4
+            6. Extract last frame to shotNN_lastframe.png for continuity
+            7. Log to 07_logs/video_generation.jsonl
+
+          Report back:
+            - Clips produced / total
+            - Veo vs Ken-Burns split (and tag-justified reasons)
+            - Any tier-downgrade corrections
+            - Any shot that hit the 60-min quota-wait escalation
+        output: "motion_summary"
+        timeout: 7200
+
+  # ---------------------------------------------------------------------------
+  # Stage 5 - Post-production (assembly + D042 overlays + masters)
+  # ---------------------------------------------------------------------------
+  - name: "post"
+    steps:
+      - id: "assemble-masters"
+        agent: "creative:post-producer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          All motion clips in 03_shots/motion/, audio track from audio
+          summary below.
+
+          Motion summary: {{motion_summary}}
+          Audio summary:  {{audio_summary}}
+
+          Produce three masters:
+            - 06_masters/v1_silent.mp4
+            - 06_masters/v1_clean.mp4
+            - 06_masters/v1_titled.mp4
+
+          Apply held-frame Ken-Burns extensions per D043 on contemplative /
+          coda shots so total duration hits the D038 master duration driver.
+          Verify non-static motion via frame-hash; escalate zoom to 1.08 on
+          any failure.
+
+          D042 overlay timing: for each shot with a page_text_overlay,
+          render a PNG using recommended_system_font from
+          font_identification.json (fall back to a sensible system default
+          and log the substitution if the identified font is unavailable).
+          Overlay enable range:
+             enable='between(t, narration_start - 0.3, narration_end + 1.0)'
+          Pull narration_start/end from audio_transcript.json segment
+          timestamps. Silent passages = no text.
+
+          Log every ffmpeg command to 07_logs/assembly_v1.log.
+
+          Report back:
+            - Paths to all three masters
+            - Final duration (and whether it matches target +/-1s)
+            - Extension budget applied per shot
+            - Any font substitution or KB zoom escalation
+            - Any overlay that failed to render
+        output: "post_summary"
+        timeout: 2400
+
+  # ---------------------------------------------------------------------------
+  # Stage 6 - QA (amplitude + visual + manifest)
+  # ---------------------------------------------------------------------------
+  - name: "qa"
+    steps:
+      - id: "qa-review"
+        agent: "creative:qa-reviewer"
+        prompt: |
+          Project directory: {{project_dir}}
+
+          Run the full D036 QA pass on the v1 masters.
+
+          Post summary: {{post_summary}}
+
+          Execute:
+            1. Amplitude check at every VO anchor from audio_transcript.json
+               (peak > 500, nonzero > 10% on 16-bit signed). ffprobe stream
+               presence is NOT sufficient (v1 pilot bug).
+            2. Per-shot visual check: compare each shotNN_frame.png against
+               reference_pages from CHARACTER_SHEET.md. Flag character
+               drift.
+            3. KB motion hash check on every held extension shot.
+            4. Codec / duration / shot-count verification via ffprobe.
+            5. Write:
+                 08_qa/v1_manifest.json
+                 08_qa/v1_qa_report.json
+                 08_qa/v1_summary.json
+
+          Per D013: hard-rule failures (amplitude, KB static, D033 tier,
+          <3 refs for character-critical) route back to the responsible
+          agent and block operator approval. Taste concerns pass through.
+
+          Report back:
+            - visual_pass_rate, audio_pass_rate
+            - Any hard-rule failure and routing recommendation
+            - Path to v1_manifest.json
+        output: "qa_summary"
+        timeout: 1200
+
+  # ---------------------------------------------------------------------------
+  # Stage 7 - Delivery (gated by master approval per D013)
+  # ---------------------------------------------------------------------------
+  - name: "delivery"
+    approval:
+      required: true
+      prompt: |
+        APPROVAL GATE 4 of 4 - MASTER
+
+        Project: {{project_dir}}
+
+        QA summary:
+        {{qa_summary}}
+
+        Review the deliverable:
+          1. Play {{project_dir}}/06_masters/v1_titled.mp4
+          2. Also review v1_clean.mp4 and v1_silent.mp4 if useful
+          3. Cross-check against OPERATOR_INTENT_MAP.md and source book
+          4. Open {{project_dir}}/08_qa/v1_manifest.json for provenance
+
+        Approve - ship it; recipe finalizes with a delivery log.
+        Deny    - halt. Use qa_report.json to route to the responsible
+                  agent (post-producer for timing, image/video-generator
+                  for visual, audio-producer for sound).
+      timeout: 0
+      default: "deny"
+    steps:
+      - id: "finalize-delivery"
+        type: "bash"
+        command: |
+          set -euo pipefail
+          PD="{{project_dir}}"
+          {
+            echo "Trailer v1 approved at $(date)."
+            echo "Project  : $PD"
+            echo "Titled   : $PD/06_masters/v1_titled.mp4"
+            echo "Clean    : $PD/06_masters/v1_clean.mp4"
+            echo "Silent   : $PD/06_masters/v1_silent.mp4"
+            echo "Manifest : $PD/08_qa/v1_manifest.json"
+          } | tee "$PD/07_logs/delivery_v1.log"
+        output: "delivery_report"
+        timeout: 30
